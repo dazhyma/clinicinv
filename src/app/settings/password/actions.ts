@@ -18,10 +18,15 @@ import { requireSessionContext } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import type { FormState } from '../../inventory/actions';
 
+export interface PasswordFormState extends FormState {
+  /** Аккаунт, пароль которого был изменён последней успешной отправкой. */
+  changedAccountId?: number;
+}
+
 export async function changePasswordFormAction(
-  _previous: FormState,
+  _previous: PasswordFormState,
   formData: FormData,
-): Promise<FormState> {
+): Promise<PasswordFormState> {
   let context;
   try {
     context = await requireSessionContext();
@@ -35,6 +40,7 @@ export async function changePasswordFormAction(
     context.actor,
     {
       accountId: String(formData.get('accountId') ?? ''),
+      targetUsername: String(formData.get('targetUsername') ?? ''),
       currentPassword: String(formData.get('currentPassword') ?? ''),
       newPassword: String(formData.get('newPassword') ?? ''),
       confirmPassword: String(formData.get('confirmPassword') ?? ''),
@@ -52,6 +58,7 @@ export async function changePasswordFormAction(
 
   return {
     ok: true,
+    changedAccountId: result.data.accountId,
     message:
       `Password changed for ${result.data.username}. ` +
       (otherSessions > 0

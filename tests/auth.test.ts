@@ -241,6 +241,31 @@ describe('Слой действий смены пароля (§3.3, FR-12)', () 
     expect(ok.account.username).toBe('staff');
   });
 
+  it('рассинхронизация id и username цели отклоняется без смены пароля', async () => {
+    const ctx = setupTestDb();
+    await withRealPasswords(ctx);
+    const adminAccount = accountByName(ctx, 'admin');
+
+    const result = await changeAccountPasswordAction(ctx.db, ctx.admin, {
+      accountId: String(adminAccount.id),
+      targetUsername: 'staff',
+      currentPassword: PASSWORD,
+      newPassword: NEW_PASSWORD,
+      confirmPassword: NEW_PASSWORD,
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('unreachable');
+    expect(result.fieldErrors?.accountId).toBe('Select the account again');
+
+    const adminLogin = await login(ctx.db, {
+      username: 'admin',
+      password: PASSWORD,
+      ip: '10.2.0.20',
+    });
+    expect(adminLogin.account.username).toBe('admin');
+  });
+
   it('Admin меняет пароль Staff: старый не работает, сессии Staff отозваны, сессия Admin жива', async () => {
     const ctx = setupTestDb();
     await withRealPasswords(ctx);

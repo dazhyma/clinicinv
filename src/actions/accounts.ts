@@ -44,6 +44,8 @@ export function listAccountsForPasswordChange(db: AppDatabase, actor: Actor): Ac
 export interface ChangePasswordInput {
   /** Какому аккаунту меняем пароль: любой из двух (§3.3). */
   accountId?: RawFormValue;
+  /** Дублирующее имя цели: защищает форму от рассинхронизации select и id. */
+  targetUsername?: RawFormValue;
   /** Текущий пароль САМОГО Admin — подтверждение личности, а не пароль цели. */
   currentPassword?: RawFormValue;
   newPassword?: RawFormValue;
@@ -120,6 +122,17 @@ export async function changeAccountPasswordAction(
   const target = db.select().from(userAccounts).where(eq(userAccounts.id, accountId)).get();
   if (!target) {
     return fail('Account not found', 'VALIDATION_FAILED', { accountId: 'Account not found' });
+  }
+  if (
+    typeof input.targetUsername === 'string' &&
+    input.targetUsername !== '' &&
+    input.targetUsername !== target.username
+  ) {
+    return fail(
+      'The selected account changed before submission. Select the account again.',
+      'VALIDATION_FAILED',
+      { accountId: 'Select the account again' },
+    );
   }
 
   const self = db.select().from(userAccounts).where(eq(userAccounts.id, actor.accountId)).get();

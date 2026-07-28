@@ -9,11 +9,13 @@
  * существующие строки операций (§6.7, §18.17). Состав читается только в момент
  * сканирования.
  */
-import { and, eq, like, or, type SQL } from 'drizzle-orm';
+import { and, eq, like, or, sql, type SQL } from 'drizzle-orm';
 import type { AppDatabase, DbLike } from '@/db/client';
 import {
   barcodeRegistry,
   items,
+  operationEvents,
+  operationItems,
   packItems,
   packs,
   type EntityStatus,
@@ -87,8 +89,9 @@ export function createPack(db: AppDatabase, actor: Actor, input: CreatePackInput
       .run();
 
     for (const component of composition) {
-      const item = tx.select({ id: items.id }).from(items).where(eq(items.id, component.itemId)).get();
+      const item = tx.select().from(items).where(eq(items.id, component.itemId)).get();
       if (!item) throw errors.itemNotFound(component.itemId);
+      if (item.status !== 'active' || item.archivedAt) throw errors.itemInactive(item.name);
       tx.insert(packItems)
         .values({ packId: created.id, itemId: component.itemId, quantity: component.quantity })
         .run();
@@ -137,6 +140,9 @@ export function updatePack(
   return runInTransaction(db, (tx) => {
     const existing = tx.select().from(packs).where(eq(packs.id, packId)).get();
     if (!existing) throw errors.packNotFound(packId);
+    if (existing.archivedAt) {
+      throw errors.validationFailed(`${existing.name} is archived and cannot be edited`);
+    }
 
     const updated = tx
       .update(packs)
@@ -156,12 +162,9 @@ export function updatePack(
       // завершённые и активные операции сохраняют свой состав (§6.7, §18.17).
       tx.delete(packItems).where(eq(packItems.packId, packId)).run();
       for (const component of composition) {
-        const item = tx
-          .select({ id: items.id })
-          .from(items)
-          .where(eq(items.id, component.itemId))
-          .get();
+        const item = tx.select().from(items).where(eq(items.id, component.itemId)).get();
         if (!item) throw errors.itemNotFound(component.itemId);
+        if (item.status !== 'active' || item.archivedAt) throw errors.itemInactive(item.name);
         tx.insert(packItems)
           .values({ packId, itemId: component.itemId, quantity: component.quantity })
           .run();
@@ -178,6 +181,90 @@ export function updatePack(
     });
 
     return updated;
+  });
+}
+
+export interface DeletePackResult {
+  disposition: 'deleted' | 'archived';
+  pack: PackRow;
+  photoUrl: string | null;
+}
+
+/** Used packs keep their historical identity; unused packs are removed fully. */
+export function deletePack(
+  db: AppDatabase,
+  actor: Actor,
+  packId: number,
+): DeletePackResult {
+  assertAdmin(actor, 'delete pack');
+
+  return runInTransaction(db, (tx) => {
+    const pack = getPack(tx, packId);
+    if (!pack) throw errors.packNotFound(packId);
+    if (pack.archivedAt) {
+      throw errors.validationFailed(`${pack.name} has already been archived`);
+    }
+
+    const usedByLine = Boolean(
+      tx
+        .select({ id: operationItems.id })
+        .from(operationItems)
+        .where(eq(operationItems.sourcePackId, packId))
+        .limit(1)
+        .get(),
+    );
+    const usedByEvent = Boolean(
+      tx
+        .select({ id: operationEvents.id })
+        .from(operationEvents)
+        .where(
+          and(
+            eq(operationEvents.eventType, 'pack_added'),
+            sql`json_extract(${operationEvents.payloadJson}, '$.packId') = ${packId}`,
+          ),
+        )
+        .limit(1)
+        .get(),
+    );
+    const used = usedByLine || usedByEvent;
+
+    if (!used) {
+      tx.delete(packItems).where(eq(packItems.packId, packId)).run();
+      tx.delete(barcodeRegistry)
+        .where(and(eq(barcodeRegistry.ownerType, 'pack'), eq(barcodeRegistry.ownerId, packId)))
+        .run();
+      tx.delete(packs).where(eq(packs.id, packId)).run();
+      writeAudit(tx, {
+        action: AUDIT_ACTIONS.packDeleted,
+        actorAccountId: actor.accountId,
+        actorRole: actor.role,
+        entityType: 'pack',
+        entityId: packId,
+        summary: `${pack.internalCode} "${pack.name}" permanently deleted`,
+      });
+      return { disposition: 'deleted', pack, photoUrl: pack.photoUrl };
+    }
+
+    const archived = tx
+      .update(packs)
+      .set({
+        status: 'inactive',
+        archivedAt: new Date(),
+        archivedByAccountId: actor.accountId,
+        updatedAt: new Date(),
+      })
+      .where(eq(packs.id, packId))
+      .returning()
+      .get();
+    writeAudit(tx, {
+      action: AUDIT_ACTIONS.packArchived,
+      actorAccountId: actor.accountId,
+      actorRole: actor.role,
+      entityType: 'pack',
+      entityId: packId,
+      summary: `${pack.internalCode} "${pack.name}" archived`,
+    });
+    return { disposition: 'archived', pack: archived, photoUrl: pack.photoUrl };
   });
 }
 

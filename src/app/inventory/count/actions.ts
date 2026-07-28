@@ -27,10 +27,12 @@ import {
   type CountSearchResultView,
   type RecordCountLineResult,
 } from '@/actions/inventory-count';
+import { deleteInventoryCountAction } from '@/actions/inventory-history';
 import { toFailure, type ActionFailure, type ActionResult } from '@/actions/result';
 import { requireActor } from '@/auth/guards';
 import { getDb } from '@/db/client';
-import type { Actor } from '@/domain/actor';
+import { isAdmin, type Actor } from '@/domain/actor';
+import { errors } from '@/domain/errors';
 
 async function actorOrFailure(): Promise<{ actor: Actor } | { failure: ActionFailure }> {
   try {
@@ -117,4 +119,22 @@ export async function cancelInventoryCountServerAction(
   const result = cancelInventoryCountAction(getDb(), auth.actor, countId);
   if (result.ok) revalidatePath('/inventory/count');
   return result;
+}
+
+export async function deleteInventoryCountFormAction(
+  _previous: { ok?: boolean; error?: string },
+  formData: FormData,
+): Promise<{ ok?: boolean; error?: string }> {
+  const actor = await requireActor();
+  if (!isAdmin(actor)) {
+    return { ok: false, error: errors.forbidden('delete inventory count').message };
+  }
+
+  const countId = Number(formData.get('countId'));
+  const result = deleteInventoryCountAction(getDb(), actor, countId);
+  if (!result.ok) return { ok: false, error: result.error };
+
+  revalidatePath('/inventory/count/history');
+  revalidatePath(`/inventory/count/history/${countId}`);
+  redirect(`/inventory/count/history?deleted=${encodeURIComponent(result.data.internalCode)}`);
 }

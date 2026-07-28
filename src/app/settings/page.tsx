@@ -21,23 +21,15 @@ export default async function SettingsPage() {
   const settings = readSettings(getDb(), actor);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col p-4 sm:p-6">
+    <main className="mx-auto flex min-h-screen max-w-4xl flex-col p-4 sm:p-6">
       <AppHeader
         title="Settings"
         backHref="/"
         backLabel="Home"
         account={{ username: account.username, role: account.role }}
       />
-      <SettingsForm settings={settings} />
-
-      {/*
-        §3.3: «менять пароли двух аккаунтов» — такое же административное
-        действие, как и настройки, но с собственной формой: у него другой ввод
-        (текущий пароль, двойной ввод нового) и другой эффект (отзыв сессий).
-        Сюда же ведёт единственная ссылка на этот экран.
-      */}
-      <section className="mt-10 border-t border-slate-200 pt-6">
-        <h2 className="text-xl font-semibold">Accounts</h2>
+      <section className="mb-6 rounded-2xl bg-white p-5 ring-1 ring-slate-200 sm:p-6">
+        <h2 className="text-xl font-semibold">Account Settings</h2>
         <p className="mt-1 max-w-xl text-base text-slate-600">
           Change the password of either shared account. Other signed-in devices for that account
           are logged out.
@@ -49,6 +41,7 @@ export default async function SettingsPage() {
           Change Password
         </Link>
       </section>
+      <SettingsForm settings={settings} />
     </main>
   );
 }

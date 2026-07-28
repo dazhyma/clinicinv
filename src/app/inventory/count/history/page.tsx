@@ -7,8 +7,13 @@ import { formatDateTime } from '../../../operations/_components/format';
 
 export const dynamic = 'force-dynamic';
 
-export default async function InventoryHistoryPage() {
+export default async function InventoryHistoryPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ deleted?: string }>;
+}) {
   const { account, actor } = await requirePage();
+  const { deleted } = await searchParams;
   const counts = listInventoryHistoryForActor(getDb(), actor);
 
   return (
@@ -19,6 +24,11 @@ export default async function InventoryHistoryPage() {
         backLabel="Inventory Count"
         account={{ username: account.username, role: account.role }}
       />
+      {deleted ? (
+        <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-lg text-emerald-900">
+          Inventory Count {deleted} was deleted and its adjustments were reversed.
+        </p>
+      ) : null}
 
       {counts.length === 0 ? (
         <p className="rounded-2xl bg-white p-6 text-lg text-slate-600 ring-1 ring-slate-200">

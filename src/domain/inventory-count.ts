@@ -5,16 +5,17 @@
  * инвентаризация переживала обновление страницы. `expected_quantity` — снимок
  * на момент ввода строки: параллельно идущая операция иначе исказит разницу.
  */
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import type { AppDatabase, DbLike } from '@/db/client';
 import {
   inventoryCountLines,
   inventoryCounts,
+  inventoryMovements,
   items,
   type InventoryCountLineRow,
   type InventoryCountRow,
 } from '@/db/schema';
-import { assertInventoryWorker, type Actor } from './actor';
+import { assertAdmin, assertInventoryWorker, type Actor } from './actor';
 import { AUDIT_ACTIONS, writeAudit } from './audit';
 import { errors } from './errors';
 import { applyMovement, idempotencyKeys, runInTransaction } from './movements';
@@ -78,7 +79,7 @@ export function listCompletedInventoryCounts(tx: DbLike): CompletedInventoryCoun
     })
     .from(inventoryCounts)
     .leftJoin(inventoryCountLines, eq(inventoryCountLines.countId, inventoryCounts.id))
-    .where(eq(inventoryCounts.status, 'applied'))
+    .where(and(eq(inventoryCounts.status, 'applied'), isNull(inventoryCounts.deletedAt)))
     .groupBy(inventoryCounts.id)
     .orderBy(desc(inventoryCounts.appliedAt), desc(inventoryCounts.id))
     .all();
@@ -89,7 +90,7 @@ export function getCompletedInventoryCount(
   countId: number,
 ): { count: InventoryCountRow; lines: InventoryCountLineRow[] } | undefined {
   const count = getInventoryCount(tx, countId);
-  if (!count || count.status !== 'applied') return undefined;
+  if (!count || count.status !== 'applied' || count.deletedAt) return undefined;
   return { count, lines: listCountLines(tx, count.id) };
 }
 
@@ -129,6 +130,7 @@ export function upsertCountLine(
 
     const item = tx.select().from(items).where(eq(items.id, input.itemId)).get();
     if (!item) throw errors.itemNotFound(input.itemId);
+    if (item.status !== 'active' || item.archivedAt) throw errors.itemInactive(item.name);
 
     const now = new Date();
     const expected = item.currentQuantity;
@@ -306,5 +308,83 @@ export function cancelInventoryCount(
       .where(eq(inventoryCounts.id, countId))
       .returning()
       .get();
+  });
+}
+
+export interface DeletedInventoryCountResult {
+  count: InventoryCountRow;
+  reversedMovements: number;
+}
+
+/**
+ * Удаление завершённого Count не переписывает старые остатки: каждое созданное
+ * им движение получает точное обратное движение. Маркер deleted_at и возвраты
+ * записываются одной BEGIN IMMEDIATE транзакцией, поэтому повторный запрос не
+ * способен применить возврат второй раз.
+ */
+export function deleteCompletedInventoryCount(
+  db: AppDatabase,
+  actor: Actor,
+  countId: number,
+): DeletedInventoryCountResult {
+  assertAdmin(actor, 'delete inventory count');
+
+  return runInTransaction(db, (tx) => {
+    const count = getInventoryCount(tx, countId);
+    if (!count || count.status !== 'applied') throw errors.countNotFound();
+    if (count.deletedAt) {
+      throw errors.validationFailed(
+        `${count.internalCode ?? 'Inventory count'} has already been deleted`,
+      );
+    }
+
+    const originals = tx
+      .select()
+      .from(inventoryMovements)
+      .where(
+        and(
+          eq(inventoryMovements.inventoryCountId, countId),
+          eq(inventoryMovements.movementType, 'count_correction'),
+          eq(inventoryMovements.reason, 'inventory correction'),
+        ),
+      )
+      .orderBy(inventoryMovements.id)
+      .all();
+
+    for (const movement of originals) {
+      applyMovement(tx, {
+        itemId: movement.itemId,
+        movementType: 'count_correction',
+        quantityDelta: -movement.quantityDelta,
+        inventoryCountId: countId,
+        idempotencyKey: idempotencyKeys.countDeletionReversal(countId, movement.id),
+        reason: 'inventory count deleted',
+        actorAccountId: actor.accountId,
+      });
+    }
+
+    const now = new Date();
+    const deleted = tx
+      .update(inventoryCounts)
+      .set({
+        deletedAt: now,
+        deletedByAccountId: actor.accountId,
+        updatedAt: now,
+      })
+      .where(and(eq(inventoryCounts.id, countId), isNull(inventoryCounts.deletedAt)))
+      .returning()
+      .get();
+    if (!deleted) throw errors.validationFailed('Inventory count could not be deleted');
+
+    writeAudit(tx, {
+      action: AUDIT_ACTIONS.countDeleted,
+      actorAccountId: actor.accountId,
+      actorRole: actor.role,
+      entityType: 'inventory_count',
+      entityId: countId,
+      summary: `${count.internalCode ?? countId}: ${originals.length} correction(s) reversed`,
+    });
+
+    return { count: deleted, reversedMovements: originals.length };
   });
 }

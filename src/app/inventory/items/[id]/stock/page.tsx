@@ -6,6 +6,7 @@ import { AppHeader } from '../../../../_components/app-header';
 import { adjustStockFormAction, receiveStockFormAction } from '../../../actions';
 import { AdjustStockForm, ReceiveStockForm } from '../../../_components/stock-forms';
 import { ItemPhoto } from '../../../../_components/item-photo';
+import { itemsReturnPath } from '../../../_components/items-return-path';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,12 +24,12 @@ export default async function ItemStockPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ returnToScanner?: string }>;
+  searchParams: Promise<{ returnToScanner?: string; returnTo?: string }>;
 }) {
   const { account, actor } = await requirePage();
   const isAdmin = account.role === 'Admin';
   const { id } = await params;
-  const { returnToScanner } = await searchParams;
+  const { returnToScanner, returnTo } = await searchParams;
   const itemId = Number(id);
   if (!Number.isSafeInteger(itemId) || itemId <= 0) notFound();
 
@@ -45,8 +46,8 @@ export default async function ItemStockPage({
             ? 'Receive stock or correct the quantity on hand.'
             : 'Enter the quantity received and save the delivery.'
         }
-        backHref={`/inventory/items/${item.id}`}
-        backLabel="Item Details"
+        backHref={itemsReturnPath(returnTo)}
+        backLabel="Back to Items"
         account={{ username: account.username, role: account.role }}
       />
 

@@ -29,6 +29,7 @@ import {
 export function LabelPrintView({
   title,
   code,
+  internalCode,
   labelSvg,
   backHref,
   backLabel,
@@ -36,6 +37,7 @@ export function LabelPrintView({
 }: {
   title: string;
   code: string;
+  internalCode: string;
   /** Готовая SVG-разметка этикетки, сгенерированная на сервере. */
   labelSvg: string;
   backHref: string;
@@ -150,9 +152,30 @@ export function LabelPrintView({
             Download PNG
           </a>
         </div>
+
+        <section className="mt-3 w-full rounded-2xl bg-white p-5 ring-1 ring-slate-200">
+          <h2 className="text-xl font-semibold">Label Preview</h2>
+          <div className="mt-5 flex min-h-64 items-center justify-center overflow-auto rounded-xl bg-slate-100 p-4 sm:p-8">
+            <div
+              className="flex w-full max-w-2xl flex-col items-center justify-center overflow-hidden bg-white p-5 shadow-lg ring-1 ring-slate-300"
+              style={{ aspectRatio: `${size.widthMm} / ${size.heightMm}` }}
+            >
+              <p className="w-full truncate text-center text-lg font-semibold text-black sm:text-2xl">
+                {title}
+              </p>
+              <div
+                className="label-graphic min-h-0 w-full max-w-xl flex-1"
+                dangerouslySetInnerHTML={{ __html: labelSvg }}
+              />
+              <p className="w-full text-center font-mono text-sm text-black sm:text-base">
+                {internalCode}
+              </p>
+            </div>
+          </div>
+        </section>
       </section>
 
-      <div className="label-sheet mx-auto flex w-full max-w-5xl flex-wrap content-start gap-2 p-4 sm:p-6">
+      <div className="label-sheet print-only mx-auto w-full max-w-5xl flex-wrap content-start gap-2 p-4 sm:p-6">
         {Array.from({ length: copies }, (_, index) => (
           <div
             key={index}
@@ -171,6 +194,9 @@ export function LabelPrintView({
               className="label-graphic min-h-0 w-full flex-1"
               dangerouslySetInnerHTML={{ __html: labelSvg }}
             />
+            <p className="w-full shrink-0 text-center font-mono text-[2.3mm] leading-none text-black">
+              {internalCode}
+            </p>
           </div>
         ))}
       </div>

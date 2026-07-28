@@ -14,6 +14,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
   createPackAction,
+  deletePackAction,
   updatePackAction,
   type PackComponentFormInput,
   type PackFormInput,
@@ -21,7 +22,7 @@ import {
 import { toFailure } from '@/actions/result';
 import { requireActor } from '@/auth/guards';
 import { getDb } from '@/db/client';
-import type { Actor } from '@/domain/actor';
+import { isAdmin, type Actor } from '@/domain/actor';
 import { errors } from '@/domain/errors';
 import { deletePhotoByUrl, storeItemPhoto } from '@/photos/storage';
 import type { FormState } from '../actions';
@@ -150,4 +151,27 @@ export async function updatePackFormAction(
   revalidatePath('/inventory/packs');
   revalidatePath(`/inventory/packs/${packId}/edit`);
   redirect(`/inventory/packs?updated=${encodeURIComponent(result.data.internalCode)}`);
+}
+
+export async function deletePackFormAction(
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const auth = await actorOrState();
+  if ('state' in auth) return auth.state;
+  if (!isAdmin(auth.actor)) {
+    const failure = toFailure(errors.forbidden('delete pack'));
+    return { ok: false, error: failure.error };
+  }
+
+  const packId = Number(text(formData, 'packId'));
+  const result = deletePackAction(getDb(), auth.actor, packId);
+  if (!result.ok) return { ok: false, error: result.error, fieldErrors: result.fieldErrors };
+
+  if (result.data.disposition === 'deleted') await deletePhotoByUrl(result.data.photoUrl);
+  revalidatePath('/inventory/packs');
+  revalidatePath(`/inventory/packs/${packId}`);
+  redirect(
+    `/inventory/packs?${result.data.disposition === 'deleted' ? 'deleted' : 'archived'}=${encodeURIComponent(result.data.internalCode)}`,
+  );
 }

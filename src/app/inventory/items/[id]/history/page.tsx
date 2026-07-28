@@ -9,6 +9,7 @@ import { getDb } from '@/db/client';
 import { formatCents } from '@/domain/money';
 import { AppHeader } from '../../../../_components/app-header';
 import { formatDateTime } from '../../../../operations/_components/format';
+import { itemsReturnPath } from '../../../_components/items-return-path';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,12 +18,12 @@ export default async function ItemHistoryPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ category?: string }>;
+  searchParams: Promise<{ category?: string; returnTo?: string }>;
 }) {
   const { account, actor } = await requirePageAdmin();
   const id = Number((await params).id);
   if (!Number.isSafeInteger(id) || id <= 0) notFound();
-  const { category = 'all' } = await searchParams;
+  const { category = 'all', returnTo } = await searchParams;
   const result = getItemHistoryForActor(getDb(), actor, id, category);
   if (!result) notFound();
 
@@ -31,8 +32,8 @@ export default async function ItemHistoryPage({
       <AppHeader
         title="Item History"
         subtitle={`${result.item.name} · ${result.item.internalCode}`}
-        backHref={`/inventory/items/${result.item.id}`}
-        backLabel="Item Details"
+        backHref={itemsReturnPath(returnTo)}
+        backLabel="Back to Items"
         account={{ username: account.username, role: account.role }}
       />
 
@@ -41,6 +42,7 @@ export default async function ItemHistoryPage({
         action={withBasePath(`/inventory/items/${result.item.id}/history`)}
         className="mb-5 flex flex-wrap items-end gap-3 rounded-2xl bg-white p-4 ring-1 ring-slate-200"
       >
+        {returnTo ? <input type="hidden" name="returnTo" value={itemsReturnPath(returnTo)} /> : null}
         <div className="min-w-64 flex-1">
           <label htmlFor="category" className="text-base font-medium">
             History category

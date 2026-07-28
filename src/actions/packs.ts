@@ -18,6 +18,7 @@ import { getItem } from '@/domain/items';
 import { formatCents } from '@/domain/money';
 import {
   createPack,
+  deletePack,
   getPack,
   getPackComposition,
   listPacks,
@@ -69,6 +70,7 @@ export interface PackView {
   photoUrl: string | null;
   notes: string | null;
   status: EntityStatus;
+  archivedAtMs: number | null;
   components: PackComponentView[];
   /** Количество позиций в составе. */
   componentCount: number;
@@ -116,6 +118,7 @@ export function toPackView(
     photoUrl: pack.photoUrl,
     notes: pack.notes,
     status: pack.status,
+    archivedAtMs: pack.archivedAt?.getTime() ?? null,
     components,
     componentCount: components.length,
     totalUnits: components.reduce((total, component) => total + component.quantity, 0),
@@ -192,6 +195,32 @@ export interface SavedPack {
   name: string;
   /** URL прежней фотографии, если она была заменена: файл можно удалить. */
   replacedPhotoUrl: string | null;
+}
+
+export interface DeletedPack {
+  packId: number;
+  internalCode: string;
+  name: string;
+  disposition: 'deleted' | 'archived';
+  photoUrl: string | null;
+}
+
+export function deletePackAction(
+  db: AppDatabase,
+  actor: Actor,
+  packId: number,
+): ActionResult<DeletedPack> {
+  if (!isAdmin(actor)) return forbidden('delete pack');
+  return runAction(() => {
+    const result = deletePack(db, actor, packId);
+    return {
+      packId,
+      internalCode: result.pack.internalCode,
+      name: result.pack.name,
+      disposition: result.disposition,
+      photoUrl: result.photoUrl,
+    };
+  });
 }
 
 /** Имя поля ошибки строки состава. Совпадает с id инпута в форме. */

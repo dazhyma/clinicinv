@@ -16,6 +16,7 @@ import { redirect } from 'next/navigation';
 import {
   adjustStockAction,
   createItemAction,
+  deleteItemAction,
   updateItemAction,
   receiveStockAction,
   type ItemFormInput,
@@ -23,7 +24,7 @@ import {
 import { toFailure, type FieldErrors } from '@/actions/result';
 import { requireActor } from '@/auth/guards';
 import { getDb } from '@/db/client';
-import type { Actor } from '@/domain/actor';
+import { isAdmin, type Actor } from '@/domain/actor';
 import { errors } from '@/domain/errors';
 import { deletePhotoByUrl, storeItemPhoto } from '@/photos/storage';
 
@@ -156,6 +157,26 @@ export async function updateItemFormAction(
   revalidatePath('/inventory/catalog');
   revalidatePath(`/inventory/items/${itemId}/edit`);
   redirect(`/inventory/catalog?updated=${encodeURIComponent(result.data.internalCode)}`);
+}
+
+export async function deleteItemFormAction(
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const auth = await actorOrState();
+  if ('state' in auth) return auth.state;
+  if (!isAdmin(auth.actor)) return toStateFailure(errors.forbidden('delete item'));
+
+  const itemId = Number(text(formData, 'itemId'));
+  const result = deleteItemAction(getDb(), auth.actor, itemId);
+  if (!result.ok) return { ok: false, error: result.error, fieldErrors: result.fieldErrors };
+
+  if (result.data.disposition === 'deleted') await deletePhotoByUrl(result.data.photoUrl);
+  revalidatePath('/inventory/catalog');
+  revalidatePath(`/inventory/items/${itemId}`);
+  redirect(
+    `/inventory/catalog?${result.data.disposition === 'deleted' ? 'deleted' : 'archived'}=${encodeURIComponent(result.data.internalCode)}`,
+  );
 }
 
 // --- Receive Stock (§5.8) ---------------------------------------------------

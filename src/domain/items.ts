@@ -9,7 +9,12 @@ import { and, eq, like, or, sql, type SQL } from 'drizzle-orm';
 import type { AppDatabase, DbLike } from '@/db/client';
 import {
   barcodeRegistry,
+  inventoryCountLines,
+  inventoryMovements,
+  itemHistoryEvents,
   items,
+  operationItems,
+  packItems,
   DEFAULT_UNITS_OF_MEASUREMENT,
   type EntityStatus,
   type ItemRow,
@@ -239,6 +244,9 @@ export function updateItem(
   return runInTransaction(db, (tx) => {
     const existing = tx.select().from(items).where(eq(items.id, itemId)).get();
     if (!existing) throw errors.itemNotFound(itemId);
+    if (existing.archivedAt) {
+      throw errors.validationFailed(`${existing.name} is archived and cannot be edited`);
+    }
     const sku = patch.sku !== undefined ? patch.sku?.trim() || null : existing.sku;
     const barcodeValue = itemBarcodeValue(sku, existing.internalCode);
 
@@ -432,6 +440,7 @@ export function receiveStock(
   return runInTransaction(db, (tx) => {
     const item = tx.select().from(items).where(eq(items.id, input.itemId)).get();
     if (!item) throw errors.itemNotFound(input.itemId);
+    if (item.status !== 'active' || item.archivedAt) throw errors.itemInactive(item.name);
 
     const movement = applyMovement(tx, {
       itemId: input.itemId,
@@ -509,6 +518,7 @@ export function adjustStock(
   return runInTransaction(db, (tx) => {
     const item = tx.select().from(items).where(eq(items.id, input.itemId)).get();
     if (!item) throw errors.itemNotFound(input.itemId);
+    if (item.status !== 'active' || item.archivedAt) throw errors.itemInactive(item.name);
 
     let delta: number;
     if (input.change.type === 'delta') {
@@ -551,6 +561,98 @@ export function adjustStock(
 
 export function getItem(tx: DbLike, itemId: number): ItemRow | undefined {
   return tx.select().from(items).where(eq(items.id, itemId)).get();
+}
+
+export interface DeleteItemResult {
+  disposition: 'deleted' | 'archived';
+  item: ItemRow;
+  photoUrl: string | null;
+}
+
+/**
+ * Delete Item необратим. Совершенно неиспользованный товар с нулевым остатком
+ * удаляется вместе с barcode aliases и технической Item History. Любая
+ * складская/операционная связь переводит его в Archived без изменения остатка.
+ */
+export function deleteItem(
+  db: AppDatabase,
+  actor: Actor,
+  itemId: number,
+): DeleteItemResult {
+  assertAdmin(actor, 'delete item');
+
+  return runInTransaction(db, (tx) => {
+    const item = getItem(tx, itemId);
+    if (!item) throw errors.itemNotFound(itemId);
+    if (item.archivedAt) {
+      throw errors.validationFailed(`${item.name} has already been archived`);
+    }
+
+    const hasMovement = Boolean(
+      tx.select({ id: inventoryMovements.id }).from(inventoryMovements)
+        .where(eq(inventoryMovements.itemId, itemId)).limit(1).get(),
+    );
+    const hasOperation = Boolean(
+      tx.select({ id: operationItems.id }).from(operationItems)
+        .where(eq(operationItems.itemId, itemId)).limit(1).get(),
+    );
+    const hasCount = Boolean(
+      tx.select({ id: inventoryCountLines.id }).from(inventoryCountLines)
+        .where(eq(inventoryCountLines.itemId, itemId)).limit(1).get(),
+    );
+    const belongsToPack = Boolean(
+      tx.select({ id: packItems.id }).from(packItems)
+        .where(eq(packItems.itemId, itemId)).limit(1).get(),
+    );
+    const mustArchive =
+      item.currentQuantity !== 0 || hasMovement || hasOperation || hasCount || belongsToPack;
+
+    if (!mustArchive) {
+      tx.delete(itemHistoryEvents).where(eq(itemHistoryEvents.itemId, itemId)).run();
+      tx.delete(barcodeRegistry)
+        .where(and(eq(barcodeRegistry.ownerType, 'item'), eq(barcodeRegistry.ownerId, itemId)))
+        .run();
+      tx.delete(items).where(eq(items.id, itemId)).run();
+      writeAudit(tx, {
+        action: AUDIT_ACTIONS.itemDeleted,
+        actorAccountId: actor.accountId,
+        actorRole: actor.role,
+        entityType: 'item',
+        entityId: itemId,
+        summary: `${item.internalCode} "${item.name}" permanently deleted`,
+      });
+      return { disposition: 'deleted', item, photoUrl: item.photoUrl };
+    }
+
+    const now = new Date();
+    const archived = tx
+      .update(items)
+      .set({
+        status: 'inactive',
+        archivedAt: now,
+        archivedByAccountId: actor.accountId,
+        updatedAt: now,
+      })
+      .where(eq(items.id, itemId))
+      .returning()
+      .get();
+    writeItemHistoryEvent(tx, {
+      itemId,
+      eventType: 'item.archived',
+      actorAccountId: actor.accountId,
+      actorRole: actor.role,
+      createdAt: now,
+    });
+    writeAudit(tx, {
+      action: AUDIT_ACTIONS.itemArchived,
+      actorAccountId: actor.accountId,
+      actorRole: actor.role,
+      entityType: 'item',
+      entityId: itemId,
+      summary: `${item.internalCode} "${item.name}" archived`,
+    });
+    return { disposition: 'archived', item: archived, photoUrl: item.photoUrl };
+  });
 }
 
 /** Разрешение отсканированной строки в предмет (§7.5). */

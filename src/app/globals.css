@@ -18,6 +18,22 @@ body {
   @apply bg-slate-50 text-slate-900 antialiased;
 }
 
+main {
+  animation: page-enter 190ms ease-out both;
+}
+
+.modal-backdrop {
+  animation: fade-in 170ms ease-out both;
+}
+
+.modal-panel {
+  animation: modal-enter 190ms ease-out both;
+}
+
+.print-only {
+  display: none;
+}
+
 button,
 a[role='button'],
 input[type='submit'] {
@@ -44,6 +60,41 @@ input[type='submit'] {
   margin: 6mm;
 }
 
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes modal-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  main,
+  .modal-backdrop,
+  .modal-panel {
+    animation: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 @media print {
   .no-print {
     display: none !important;
@@ -55,6 +106,7 @@ input[type='submit'] {
   }
 
   .label-sheet {
+    display: flex;
     margin: 0;
     padding: 0;
     gap: 0;

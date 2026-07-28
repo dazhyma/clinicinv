@@ -5,24 +5,35 @@ import { requirePage } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import { AppHeader } from '../../../_components/app-header';
 import { ItemPhoto } from '../../../_components/item-photo';
+import { DeleteDialog } from '../../_components/delete-dialog';
+import { deleteItemFormAction } from '../../actions';
+import { itemsReturnPath } from '../../_components/items-return-path';
 
 export const dynamic = 'force-dynamic';
 
-export default async function ItemDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ItemDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ returnTo?: string }>;
+}) {
   const { account, actor } = await requirePage();
   const id = Number((await params).id);
   if (!Number.isSafeInteger(id) || id <= 0) notFound();
   const item = getItemForActor(getDb(), actor, id);
   if (!item) notFound();
   const isAdmin = account.role === 'Admin';
+  const backHref = itemsReturnPath((await searchParams).returnTo);
+  const returnQuery = `?returnTo=${encodeURIComponent(backHref)}`;
 
   return (
     <main className="mx-auto flex min-h-screen max-w-4xl flex-col p-4 sm:p-6">
       <AppHeader
         title={item.name}
         subtitle="Item Details"
-        backHref="/inventory/catalog"
-        backLabel="Items & Packs"
+        backHref={backHref}
+        backLabel="Back to Items"
         account={{ username: account.username, role: account.role }}
       />
 
@@ -55,27 +66,27 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
 
         <div className="mt-6 flex flex-wrap gap-3">
           <Link
-            href={`/inventory/items/${item.id}/barcode`}
+            href={`/inventory/items/${item.id}/barcode${returnQuery}`}
             className="rounded-xl border border-slate-300 px-5 py-3 text-lg font-semibold"
           >
             View Barcode
           </Link>
-          {isAdmin ? (
+          {isAdmin && !item.archivedAtMs ? (
             <>
               <Link
-                href={`/inventory/items/${item.id}/edit`}
+                href={`/inventory/items/${item.id}/edit${returnQuery}`}
                 className="rounded-xl border border-slate-300 px-5 py-3 text-lg font-semibold"
               >
                 Edit
               </Link>
               <Link
-                href={`/inventory/items/${item.id}/stock`}
+                href={`/inventory/items/${item.id}/stock${returnQuery}`}
                 className="rounded-xl border border-slate-300 px-5 py-3 text-lg font-semibold"
               >
                 Stock Adjustment
               </Link>
               <Link
-                href={`/inventory/items/${item.id}/history`}
+                href={`/inventory/items/${item.id}/history${returnQuery}`}
                 className="rounded-xl bg-slate-900 px-5 py-3 text-lg font-semibold text-white"
               >
                 Item History
@@ -84,6 +95,31 @@ export default async function ItemDetailPage({ params }: { params: Promise<{ id:
           ) : null}
         </div>
       </section>
+
+      {isAdmin && !item.archivedAtMs ? (
+        <section className="mt-8 rounded-2xl border border-red-200 bg-red-50 p-5">
+          <h2 className="text-xl font-semibold text-red-950">Delete item</h2>
+          <p className="mt-1 mb-4 text-red-900">
+            This action is permanent. Items with stock or historical records are archived instead
+            of being physically removed.
+          </p>
+          <DeleteDialog
+            action={deleteItemFormAction}
+            fieldName="itemId"
+            entityId={item.id}
+            triggerLabel="Delete Item"
+            title={`Delete ${item.name}?`}
+            description="Previous history will remain available when this item must be archived."
+            details={
+              <p>
+                Current stock: <strong>{item.currentQuantity}</strong>{' '}
+                {item.unitOfMeasurement}
+              </p>
+            }
+            confirmLabel="Delete Item"
+          />
+        </section>
+      ) : null}
     </main>
   );
 }

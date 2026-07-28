@@ -5,6 +5,8 @@ import { requirePage } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import { AppHeader } from '../../../_components/app-header';
 import { ItemPhoto } from '../../../_components/item-photo';
+import { DeleteDialog } from '../../_components/delete-dialog';
+import { deletePackFormAction } from '../actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,7 +63,7 @@ export default async function PackDetailPage({ params }: { params: Promise<{ id:
           >
             View Barcode
           </Link>
-          {isAdmin ? (
+          {isAdmin && !pack.archivedAtMs ? (
             <Link
               href={`/inventory/packs/${pack.id}/edit`}
               className="rounded-xl bg-slate-900 px-5 py-3 text-lg font-semibold text-white"
@@ -71,6 +73,24 @@ export default async function PackDetailPage({ params }: { params: Promise<{ id:
           ) : null}
         </div>
       </section>
+
+      {isAdmin && !pack.archivedAtMs ? (
+        <section className="mt-8 rounded-2xl border border-red-200 bg-red-50 p-5">
+          <h2 className="text-xl font-semibold text-red-950">Delete pack</h2>
+          <p className="mt-1 mb-4 text-red-900">
+            Used packs are archived permanently; unused packs are removed.
+          </p>
+          <DeleteDialog
+            action={deletePackFormAction}
+            fieldName="packId"
+            entityId={pack.id}
+            triggerLabel="Delete Pack"
+            title={`Delete ${pack.name}?`}
+            description="Items inside this pack will not be deleted. Previous operations will remain unchanged."
+            confirmLabel="Delete Pack"
+          />
+        </section>
+      ) : null}
     </main>
   );
 }

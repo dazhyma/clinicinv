@@ -14,6 +14,8 @@ interface SearchParams {
   includeInactive?: string;
   created?: string;
   updated?: string;
+  deleted?: string;
+  archived?: string;
 }
 
 /**
@@ -82,6 +84,16 @@ export default async function InventoryPacksPage({
       {params.updated ? (
         <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-lg text-emerald-900">
           Pack {params.updated} was updated.
+        </p>
+      ) : null}
+      {params.deleted ? (
+        <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-lg text-emerald-900">
+          Pack {params.deleted} was permanently deleted.
+        </p>
+      ) : null}
+      {params.archived ? (
+        <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-lg text-emerald-900">
+          Pack {params.archived} was archived.
         </p>
       ) : null}
 

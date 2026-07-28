@@ -160,6 +160,9 @@ export const items = sqliteTable(
     lowStockThreshold: integer('low_stock_threshold'),
     notes: text('notes'),
     status: text('status', { enum: ENTITY_STATUSES }).notNull().default('active'),
+    /** Необратимое архивирование через Delete Item; `inactive` остаётся временным статусом. */
+    archivedAt: integer('archived_at', { mode: 'timestamp_ms' }),
+    archivedByAccountId: integer('archived_by_account_id').references(() => userAccounts.id),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
@@ -172,6 +175,7 @@ export const items = sqliteTable(
     index('ix_items_category').on(t.category),
     index('ix_items_storage_location').on(t.storageLocation),
     index('ix_items_status').on(t.status),
+    index('ix_items_archived_at').on(t.archivedAt),
     index('ix_items_current_quantity').on(t.currentQuantity),
   ],
 );
@@ -189,6 +193,8 @@ export const packs = sqliteTable(
     photoUrl: text('photo_url'),
     notes: text('notes'),
     status: text('status', { enum: ENTITY_STATUSES }).notNull().default('active'),
+    archivedAt: integer('archived_at', { mode: 'timestamp_ms' }),
+    archivedByAccountId: integer('archived_by_account_id').references(() => userAccounts.id),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
     // Полей current_quantity и стоимости здесь нет и быть не должно:
@@ -200,6 +206,7 @@ export const packs = sqliteTable(
     uniqueIndex('ux_packs_barcode_value').on(t.barcodeValue),
     index('ix_packs_name').on(t.name),
     index('ix_packs_status').on(t.status),
+    index('ix_packs_archived_at').on(t.archivedAt),
   ],
 );
 
@@ -342,6 +349,9 @@ export const inventoryCounts = sqliteTable(
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
     appliedAt: integer('applied_at', { mode: 'timestamp_ms' }),
     cancelledAt: integer('cancelled_at', { mode: 'timestamp_ms' }),
+    /** Техническая запись сохраняется, но удалённый Count скрыт из истории и отчётов. */
+    deletedAt: integer('deleted_at', { mode: 'timestamp_ms' }),
+    deletedByAccountId: integer('deleted_by_account_id').references(() => userAccounts.id),
   },
   (t) => [
     uniqueIndex('ux_inventory_counts_internal_code').on(t.internalCode),
@@ -350,6 +360,7 @@ export const inventoryCounts = sqliteTable(
       .where(sql`${t.status} = 'draft'`),
     index('ix_inventory_counts_status').on(t.status, t.createdAt),
     index('ix_inventory_counts_applied_at').on(t.status, t.appliedAt),
+    index('ix_inventory_counts_deleted_at').on(t.deletedAt),
   ],
 );
 

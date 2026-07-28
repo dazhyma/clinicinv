@@ -29,7 +29,11 @@ export function PackCard({ pack, canEdit }: { pack: PackView; canEdit: boolean }
           >
             {pack.name}
           </Link>
-          {pack.status === 'inactive' ? (
+          {pack.archivedAtMs ? (
+            <span className="rounded-full bg-red-100 px-3 py-1 text-sm font-semibold text-red-800">
+              Archived
+            </span>
+          ) : pack.status === 'inactive' ? (
             <span className="rounded-full bg-slate-200 px-3 py-1 text-sm font-semibold text-slate-700">
               Inactive
             </span>
@@ -77,7 +81,7 @@ export function PackCard({ pack, canEdit }: { pack: PackView; canEdit: boolean }
         >
           View
         </Link>
-        {canEdit ? (
+        {canEdit && !pack.archivedAtMs ? (
           <Link
             href={`/inventory/packs/${pack.id}/edit`}
             className="flex-1 rounded-xl border border-slate-300 px-5 py-3 text-center text-lg font-medium sm:flex-none"

@@ -29,7 +29,7 @@ export default async function EditPackPage({ params }: { params: Promise<{ id: s
 
   const db = getDb();
   const pack = getPackForActor(db, actor, packId);
-  if (!pack) notFound();
+  if (!pack || pack.archivedAtMs) notFound();
 
   // Состав может содержать предмет, который позже деактивировали: он должен
   // остаться в списке выбора, иначе форма молча выбросила бы его из пака.

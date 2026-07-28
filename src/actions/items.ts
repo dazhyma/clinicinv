@@ -25,6 +25,7 @@ import {
   AVAILABILITY_FILTERS,
   adjustStock,
   createItem,
+  deleteItem,
   getItem,
   isLowStock,
   listCategories,
@@ -76,6 +77,7 @@ export interface ItemView {
   storageLocation: string | null;
   notes: string | null;
   status: EntityStatus;
+  archivedAtMs: number | null;
   unitCostCents?: number;
   unitCostFormatted?: string;
 }
@@ -97,6 +99,7 @@ export function toItemView(item: ItemRow, options: { showCost: boolean }): ItemV
     storageLocation: item.storageLocation,
     notes: item.notes,
     status: item.status,
+    archivedAtMs: item.archivedAt?.getTime() ?? null,
   };
 
   if (!options.showCost) return view;
@@ -333,6 +336,32 @@ export function updateItemAction(
       internalCode: updated.internalCode,
       name: updated.name,
       replacedPhotoUrl: photoChanged ? existing.photoUrl : null,
+    };
+  });
+}
+
+export interface DeletedItem {
+  itemId: number;
+  internalCode: string;
+  name: string;
+  disposition: 'deleted' | 'archived';
+  photoUrl: string | null;
+}
+
+export function deleteItemAction(
+  db: AppDatabase,
+  actor: Actor,
+  itemId: number,
+): ActionResult<DeletedItem> {
+  if (!isAdmin(actor)) return forbidden('delete item');
+  return runAction(() => {
+    const result = deleteItem(db, actor, itemId);
+    return {
+      itemId,
+      internalCode: result.item.internalCode,
+      name: result.item.name,
+      disposition: result.disposition,
+      photoUrl: result.photoUrl,
     };
   });
 }

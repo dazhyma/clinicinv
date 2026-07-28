@@ -16,8 +16,18 @@ import { ItemPhoto } from '../../_components/item-photo';
  * На узком экране блок кнопок переносится под текст, но кнопки остаются
  * крупными (§5.2, §14.1): минимальная высота задана глобально в globals.css.
  */
-export function ItemCard({ item, canEdit }: { item: ItemView; canEdit: boolean }) {
+export function ItemCard({
+  item,
+  canEdit,
+  returnTo,
+}: {
+  item: ItemView;
+  canEdit: boolean;
+  returnTo: string;
+}) {
   const lowStock = item.isLowStock;
+  const href = (suffix = '') =>
+    `/inventory/items/${item.id}${suffix}?returnTo=${encodeURIComponent(returnTo)}`;
 
   return (
     <li
@@ -30,7 +40,7 @@ export function ItemCard({ item, canEdit }: { item: ItemView; canEdit: boolean }
       <div className="min-w-40 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <Link
-            href={`/inventory/items/${item.id}`}
+            href={href()}
             className="text-xl font-semibold underline-offset-4 hover:underline"
           >
             {item.name}
@@ -40,7 +50,11 @@ export function ItemCard({ item, canEdit }: { item: ItemView; canEdit: boolean }
               Low stock
             </span>
           ) : null}
-          {item.status === 'inactive' ? (
+          {item.archivedAtMs ? (
+            <span className="rounded-full bg-red-100 px-3 py-1 text-sm font-semibold text-red-800">
+              Archived
+            </span>
+          ) : item.status === 'inactive' ? (
             <span className="rounded-full bg-slate-200 px-3 py-1 text-sm font-semibold text-slate-700">
               Inactive
             </span>
@@ -62,21 +76,21 @@ export function ItemCard({ item, canEdit }: { item: ItemView; canEdit: boolean }
 
       <div className="flex w-full flex-wrap gap-2 sm:w-auto">
         <Link
-          href={`/inventory/items/${item.id}`}
+          href={href()}
           className="flex-1 rounded-xl border border-slate-300 px-5 py-3 text-center text-lg font-medium sm:flex-none"
         >
           View
         </Link>
-        {canEdit ? (
+        {canEdit && !item.archivedAtMs ? (
           <>
             <Link
-              href={`/inventory/items/${item.id}/edit`}
+              href={href('/edit')}
               className="flex-1 rounded-xl border border-slate-300 px-5 py-3 text-center text-lg font-medium sm:flex-none"
             >
               Edit
             </Link>
             <Link
-              href={`/inventory/items/${item.id}/stock`}
+              href={href('/stock')}
               className="flex-1 rounded-xl border border-slate-300 px-5 py-3 text-center text-lg font-medium sm:flex-none"
             >
               Stock
@@ -84,7 +98,7 @@ export function ItemCard({ item, canEdit }: { item: ItemView; canEdit: boolean }
           </>
         ) : null}
         <Link
-          href={`/inventory/items/${item.id}/barcode`}
+          href={href('/barcode')}
           className="flex-1 rounded-xl border border-slate-300 px-5 py-3 text-center text-lg font-medium sm:flex-none"
         >
           View Barcode

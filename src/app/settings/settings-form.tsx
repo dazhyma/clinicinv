@@ -1,9 +1,9 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, type ReactNode } from 'react';
 import type { SettingsView } from '@/actions/settings';
 import type { FormState } from '../inventory/actions';
-import { ErrorBanner, Field, SubmitButton, SuccessBanner } from '../inventory/_components/form-field';
+import { ErrorBanner, SubmitButton, SuccessBanner } from '../inventory/_components/form-field';
 import { updateSettingsFormAction } from './actions';
 
 const initialState: FormState = {};
@@ -13,61 +13,118 @@ export function SettingsForm({ settings }: { settings: SettingsView }) {
   const fieldErrors = state.fieldErrors ?? {};
 
   return (
-    <form action={formAction} className="flex max-w-xl flex-col gap-6">
+    <form action={formAction} className="flex flex-col gap-6">
       <ErrorBanner message={state.error} />
       {state.ok ? <SuccessBanner message={state.message} /> : null}
 
-      {/* §3.2 / Q-1: по умолчанию Staff стоимость не видит. Когда настройка
-          выключена, финансовые поля не попадают в ответ сервера вообще. */}
-      <Field
-        name="staffCanSeeCost"
-        label="Cost visibility for Staff"
-        required
-        error={fieldErrors.staffCanSeeCost}
-        hint="When hidden, cost values are not sent to Staff sessions at all."
+      <SettingsSection
+        title="Staff Permissions"
+        description="Choose what the shared Staff account can access."
       >
-        {(props) => (
-          <select defaultValue={String(settings.staffCanSeeCost)} {...props}>
-            <option value="false">Hidden from Staff (default)</option>
-            <option value="true">Visible to Staff</option>
-          </select>
-        )}
-      </Field>
+        <ToggleRow
+          name="staffCanSeeCost"
+          label="View inventory cost"
+          description="Allow Staff to see cost values. When disabled, values are not sent to Staff sessions."
+          checked={settings.staffCanSeeCost}
+          error={fieldErrors.staffCanSeeCost}
+        />
+      </SettingsSection>
 
-      {/* §7.10 / Q-4: рекомендованный ТЗ режим — предупреждать, а не блокировать. */}
-      <Field
-        name="negativeStockMode"
-        label="When stock is not enough during an operation"
-        required
-        error={fieldErrors.negativeStockMode}
-        hint="Blocking during a procedure can be dangerously inconvenient (§7.10)."
+      <SettingsSection
+        title="Operation Settings"
+        description="Controls used while supplies are recorded during an operation."
       >
-        {(props) => (
-          <select defaultValue={settings.negativeStockMode} {...props}>
+        <div className="grid gap-2">
+          <label htmlFor="negativeStockMode" className="font-semibold">
+            When stock is not enough
+          </label>
+          <p className="text-sm text-slate-600">
+            Choose whether to warn or block when an operation would create negative stock.
+          </p>
+          <select
+            id="negativeStockMode"
+            name="negativeStockMode"
+            defaultValue={settings.negativeStockMode}
+            className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-lg"
+          >
             <option value="warn">Allow with a clear warning (recommended)</option>
-            <option value="block">Block adding more than is in stock</option>
+            <option value="block">Block when stock is insufficient</option>
           </select>
-        )}
-      </Field>
+          {fieldErrors.negativeStockMode ? (
+            <p className="text-sm text-red-700">{fieldErrors.negativeStockMode}</p>
+          ) : null}
+        </div>
+      </SettingsSection>
 
-      {/* §7.5, шаг 6: звук скана «если это поддерживается устройством».
-          Настройка появилась вместе с экраном, который её читает (D-23). */}
-      <Field
-        name="soundOnScanEnabled"
-        label="Sound on scan"
-        required
-        error={fieldErrors.soundOnScanEnabled}
-        hint="A short tone confirms each scan; a lower tone marks an error or a warning."
-      >
-        {(props) => (
-          <select defaultValue={String(settings.soundOnScanEnabled)} {...props}>
-            <option value="true">On (default)</option>
-            <option value="false">Off</option>
-          </select>
-        )}
-      </Field>
+      <SettingsSection title="Other Settings" description="Interface feedback and device behavior.">
+        <ToggleRow
+          name="soundOnScanEnabled"
+          label="Sound on scan"
+          description="Play a confirmation tone after a scan and a lower tone for errors."
+          checked={settings.soundOnScanEnabled}
+          error={fieldErrors.soundOnScanEnabled}
+        />
+      </SettingsSection>
 
-      <SubmitButton>Save Settings</SubmitButton>
+      <div className="sticky bottom-3 rounded-2xl bg-white/95 p-4 shadow-lg ring-1 ring-slate-200 backdrop-blur">
+        <SubmitButton>Save Settings</SubmitButton>
+      </div>
     </form>
+  );
+}
+
+function SettingsSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl bg-white p-5 ring-1 ring-slate-200 sm:p-6">
+      <h2 className="text-xl font-semibold">{title}</h2>
+      <p className="mt-1 mb-5 text-slate-600">{description}</p>
+      {children}
+    </section>
+  );
+}
+
+function ToggleRow({
+  name,
+  label,
+  description,
+  checked,
+  error,
+}: {
+  name: string;
+  label: string;
+  description: string;
+  checked: boolean;
+  error?: string;
+}) {
+  return (
+    <div>
+      <label className="flex min-h-16 cursor-pointer items-center justify-between gap-5 rounded-xl bg-slate-50 p-4">
+        <span>
+          <span className="block font-semibold">{label}</span>
+          <span className="mt-1 block text-sm text-slate-600">{description}</span>
+        </span>
+        <span className="relative shrink-0">
+          <input
+            type="checkbox"
+            name={name}
+            value="true"
+            defaultChecked={checked}
+            className="peer sr-only"
+          />
+          <span className="block h-8 w-14 rounded-full bg-slate-300 transition peer-checked:bg-emerald-600" />
+          <span className="absolute top-1 left-1 h-6 w-6 rounded-full bg-white shadow transition peer-checked:translate-x-6" />
+        </span>
+      </label>
+      <input type="hidden" name={name} value="false" />
+      {error ? <p className="mt-2 text-sm text-red-700">{error}</p> : null}
+    </div>
   );
 }

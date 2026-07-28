@@ -19,6 +19,8 @@ interface SearchParams {
   created?: string;
   updated?: string;
   error?: string;
+  deleted?: string;
+  archived?: string;
 }
 
 export default async function InventoryCatalogPage({
@@ -38,6 +40,14 @@ export default async function InventoryCatalogPage({
     includeInactive: params.includeInactive === '1',
   };
   const result = listItemsForActor(getDb(), actor, query);
+  const returnParams = new URLSearchParams();
+  if (query.q) returnParams.set('q', query.q);
+  if (query.category) returnParams.set('category', query.category);
+  if (query.location) returnParams.set('location', query.location);
+  if (query.availability !== 'all') returnParams.set('availability', query.availability);
+  if (query.lowStock) returnParams.set('lowStock', '1');
+  if (query.includeInactive) returnParams.set('includeInactive', '1');
+  const returnTo = `/inventory/catalog${returnParams.size ? `?${returnParams}` : ''}`;
 
   return (
     <main className="mx-auto flex min-h-screen max-w-5xl flex-col p-4 sm:p-6">
@@ -57,6 +67,16 @@ export default async function InventoryCatalogPage({
       {params.updated ? (
         <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-lg text-emerald-900">
           Item {params.updated} was updated.
+        </p>
+      ) : null}
+      {params.deleted ? (
+        <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-lg text-emerald-900">
+          Item {params.deleted} was permanently deleted.
+        </p>
+      ) : null}
+      {params.archived ? (
+        <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-lg text-emerald-900">
+          Item {params.archived} was archived.
         </p>
       ) : null}
       {params.error ? (
@@ -95,7 +115,7 @@ export default async function InventoryCatalogPage({
       ) : (
         <ul className="flex flex-col gap-3">
           {result.items.map((item) => (
-            <ItemCard key={item.id} item={item} canEdit={isAdmin} />
+            <ItemCard key={item.id} item={item} canEdit={isAdmin} returnTo={returnTo} />
           ))}
         </ul>
       )}

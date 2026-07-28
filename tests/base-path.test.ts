@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { itemsReturnPath } from '@/app/inventory/_components/items-return-path';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { BASE_PATH, withBasePath } from '@/base-path';
@@ -48,5 +49,15 @@ describe('basePath развёртывания', () => {
     expect(url.startsWith(BASE_PATH)).toBe(false);
     expect(url).toBe(`/api/photos/${'0'.repeat(32)}`);
     expect(thumbnailUrl(url)).toBe(`${url}?variant=thumb`);
+  });
+});
+
+describe('Items return path', () => {
+  it('сохраняет только безопасный URL списка с поиском и фильтрами', () => {
+    expect(itemsReturnPath('/inventory/catalog?q=gauze&lowStock=1')).toBe(
+      '/inventory/catalog?q=gauze&lowStock=1',
+    );
+    expect(itemsReturnPath('https://evil.example/inventory/catalog')).toBe('/inventory/catalog');
+    expect(itemsReturnPath('/operations')).toBe('/inventory/catalog');
   });
 });

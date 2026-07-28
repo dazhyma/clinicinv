@@ -1,9 +1,14 @@
+import { and, eq } from 'drizzle-orm';
 import type { AppDatabase } from '@/db/client';
+import { inventoryMovements } from '@/db/schema';
 import { isInventoryWorker, type Actor } from '@/domain/actor';
 import {
+  deleteCompletedInventoryCount,
   getCompletedInventoryCount,
   listCompletedInventoryCounts,
 } from '@/domain/inventory-count';
+import { isAdmin } from '@/domain/actor';
+import { forbidden, runAction, type ActionResult } from './result';
 
 function countCode(id: number, value: string | null): string {
   return value ?? `INV-${String(id).padStart(6, '0')}`;
@@ -19,6 +24,7 @@ export interface InventoryHistoryRowView {
   completedBy: 'Staff' | 'Admin' | null;
   countedItems: number;
   differenceCount: number;
+  adjustmentCount: number;
 }
 
 export function listInventoryHistoryForActor(
@@ -26,17 +32,31 @@ export function listInventoryHistoryForActor(
   actor: Actor,
 ): InventoryHistoryRowView[] {
   if (!isInventoryWorker(actor)) return [];
-  return listCompletedInventoryCounts(db).map(({ count, countedItems, differenceCount }) => ({
-    id: count.id,
-    internalCode: countCode(count.id, count.internalCode),
-    status: 'Completed',
-    createdAtMs: count.createdAt.getTime(),
-    completedAtMs: (count.appliedAt ?? count.updatedAt).getTime(),
-    startedBy: count.createdByRole,
-    completedBy: count.completedByRole,
-    countedItems,
-    differenceCount,
-  }));
+  return listCompletedInventoryCounts(db).map(({ count, countedItems, differenceCount }) => {
+    const adjustmentCount = db
+      .select({ id: inventoryMovements.id })
+      .from(inventoryMovements)
+      .where(
+        and(
+          eq(inventoryMovements.inventoryCountId, count.id),
+          eq(inventoryMovements.movementType, 'count_correction'),
+          eq(inventoryMovements.reason, 'inventory correction'),
+        ),
+      )
+      .all().length;
+    return {
+      id: count.id,
+      internalCode: countCode(count.id, count.internalCode),
+      status: 'Completed',
+      createdAtMs: count.createdAt.getTime(),
+      completedAtMs: (count.appliedAt ?? count.updatedAt).getTime(),
+      startedBy: count.createdByRole,
+      completedBy: count.completedByRole,
+      countedItems,
+      differenceCount,
+      adjustmentCount,
+    };
+  });
 }
 
 export interface InventoryHistoryDetailView {
@@ -68,6 +88,17 @@ export function getInventoryHistoryForActor(
   const result = getCompletedInventoryCount(db, countId);
   if (!result) return undefined;
   const differenceCount = result.lines.filter((line) => line.difference !== 0).length;
+  const adjustmentCount = db
+    .select({ id: inventoryMovements.id })
+    .from(inventoryMovements)
+    .where(
+      and(
+        eq(inventoryMovements.inventoryCountId, countId),
+        eq(inventoryMovements.movementType, 'count_correction'),
+        eq(inventoryMovements.reason, 'inventory correction'),
+      ),
+    )
+    .all().length;
   return {
     summary: {
       id: result.count.id,
@@ -79,6 +110,7 @@ export function getInventoryHistoryForActor(
       completedBy: result.count.completedByRole,
       countedItems: result.lines.length,
       differenceCount,
+      adjustmentCount,
     },
     lines: result.lines.map((line) => ({
       id: line.id,
@@ -97,4 +129,26 @@ export function getInventoryHistoryForActor(
       updatedAtMs: line.updatedAt.getTime(),
     })),
   };
+}
+
+export interface DeletedInventoryCountView {
+  id: number;
+  internalCode: string;
+  reversedMovements: number;
+}
+
+export function deleteInventoryCountAction(
+  db: AppDatabase,
+  actor: Actor,
+  countId: number,
+): ActionResult<DeletedInventoryCountView> {
+  if (!isAdmin(actor)) return forbidden('delete inventory count');
+  return runAction(() => {
+    const result = deleteCompletedInventoryCount(db, actor, countId);
+    return {
+      id: result.count.id,
+      internalCode: countCode(result.count.id, result.count.internalCode),
+      reversedMovements: result.reversedMovements,
+    };
+  });
 }

@@ -43,6 +43,8 @@ export const idempotencyKeys = {
   receiveStock: (clientEventId: string) => `receive:${clientEventId}`,
   manualAdjustment: (clientEventId: string) => `adjust:${clientEventId}`,
   countCorrection: (countId: number, itemId: number) => `count:${countId}:item:${itemId}`,
+  countDeletionReversal: (countId: number, movementId: number) =>
+    `count-delete:${countId}:movement:${movementId}`,
   operationScan: (operationId: number, clientEventId: string) =>
     `op:${operationId}:scan:${clientEventId}`,
   operationPackItem: (operationId: number, clientEventId: string, itemId: number) =>

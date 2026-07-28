@@ -6,6 +6,7 @@ import { CENTS_IN_DOLLAR } from '@/domain/money';
 import { AppHeader } from '../../../../_components/app-header';
 import { updateItemFormAction } from '../../../actions';
 import { ItemForm } from '../../../_components/item-form';
+import { itemsReturnPath } from '../../../_components/items-return-path';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +18,13 @@ export const dynamic = 'force-dynamic';
  * (§11.3, §11.4, §18.15, §18.16). Внутренний код и штрихкод формой не меняются
  * (§18.7).
  */
-export default async function EditItemPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function EditItemPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ returnTo?: string }>;
+}) {
   const { account, actor } = await requirePageAdmin();
   const { id } = await params;
   const itemId = Number(id);
@@ -25,7 +32,7 @@ export default async function EditItemPage({ params }: { params: Promise<{ id: s
 
   const db = getDb();
   const item = getItemForActor(db, actor, itemId);
-  if (!item) notFound();
+  if (!item || item.archivedAtMs) notFound();
 
   // Admin всегда видит стоимость, поэтому поле здесь заведомо присутствует.
   const unitCostValue =
@@ -38,8 +45,8 @@ export default async function EditItemPage({ params }: { params: Promise<{ id: s
       <AppHeader
         title={item.name}
         subtitle="Editing an item never changes finished operations."
-        backHref={`/inventory/items/${item.id}`}
-        backLabel="Item Details"
+        backHref={itemsReturnPath((await searchParams).returnTo)}
+        backLabel="Back to Items"
         account={{ username: account.username, role: account.role }}
       />
       <ItemForm

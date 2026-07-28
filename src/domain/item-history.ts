@@ -25,7 +25,11 @@ export type ItemHistoryCategory =
 
 export interface ItemHistoryEventInput {
   itemId: number;
-  eventType: 'item.created' | 'item.information_changed' | 'item.cost_changed';
+  eventType:
+    | 'item.created'
+    | 'item.information_changed'
+    | 'item.cost_changed'
+    | 'item.archived';
   fieldName?: string | null;
   oldValue?: string | null;
   newValue?: string | null;
@@ -66,7 +70,7 @@ export interface ItemHistoryEntry {
   reason: string | null;
 }
 
-function movementPresentation(type: string): {
+function movementPresentation(type: string, reason?: string | null): {
   action: string;
   category: ItemHistoryEntry['category'];
 } {
@@ -76,7 +80,13 @@ function movementPresentation(type: string): {
     case 'received':
       return { action: 'Receive Stock', category: 'received' };
     case 'count_correction':
-      return { action: 'Inventory Count Adjustment', category: 'counts' };
+      return {
+        action:
+          reason === 'inventory count deleted'
+            ? 'Inventory Count Deleted'
+            : 'Inventory Count Adjustment',
+        category: 'counts',
+      };
     case 'manual_adjustment':
       return { action: 'Manual Adjustment', category: 'adjustments' };
     case 'used_in_operation':
@@ -179,7 +189,7 @@ export function listItemHistory(
   const movementEntries = movements.map<ItemHistoryEntry>((movement) => {
     const quantityBefore = runningQuantity;
     runningQuantity += movement.quantityDelta;
-    const presentation = movementPresentation(movement.movementType);
+    const presentation = movementPresentation(movement.movementType, movement.reason);
     return {
       id: `movement-${movement.id}`,
       category: presentation.category,
@@ -209,7 +219,9 @@ export function listItemHistory(
     id: `event-${event.id}`,
     category: event.eventType === 'item.cost_changed' ? 'cost' : 'information',
     action:
-      event.eventType === 'item.created'
+      event.eventType === 'item.archived'
+        ? 'Item Archived'
+        : event.eventType === 'item.created'
         ? 'Item Created'
         : event.eventType === 'item.cost_changed'
           ? 'Unit Cost Changed'

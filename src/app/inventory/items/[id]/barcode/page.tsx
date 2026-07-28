@@ -4,6 +4,7 @@ import { requirePage } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import { renderLabelSvg } from '@/domain/barcode';
 import { LabelPrintView } from '../../../_components/label-print';
+import { itemsReturnPath } from '../../../_components/items-return-path';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +21,13 @@ export const dynamic = 'force-dynamic';
  * Доступно обеим ролям: §3.2 не запрещает Staff печатать этикетку, а стоимости
  * на этикетке нет вовсе.
  */
-export default async function ItemBarcodePage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ItemBarcodePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ returnTo?: string }>;
+}) {
   const { actor } = await requirePage();
   const { id } = await params;
   const itemId = Number(id);
@@ -35,9 +42,10 @@ export default async function ItemBarcodePage({ params }: { params: Promise<{ id
         kindLabel="Item"
         title={item.name}
         code={item.barcodeValue}
+        internalCode={item.internalCode}
         labelSvg={renderLabelSvg(item.barcodeValue)}
-        backHref={`/inventory/items/${item.id}`}
-        backLabel="Back to Item"
+        backHref={itemsReturnPath((await searchParams).returnTo)}
+        backLabel="Back to Items"
       />
     </main>
   );

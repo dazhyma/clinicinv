@@ -5,6 +5,8 @@ import { getDb } from '@/db/client';
 import { AppHeader } from '../../../../_components/app-header';
 import { ItemPhoto } from '../../../../_components/item-photo';
 import { formatDateTime } from '../../../../operations/_components/format';
+import { DeleteDialog } from '../../../_components/delete-dialog';
+import { deleteInventoryCountFormAction } from '../../actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -82,6 +84,42 @@ export default async function InventoryHistoryDetailPage({
           </li>
         ))}
       </ul>
+
+      {account.role === 'Admin' ? (
+        <section className="mt-8 rounded-2xl border border-red-200 bg-red-50 p-5">
+          <h2 className="text-xl font-semibold text-red-950">Delete inventory count</h2>
+          <p className="mt-1 mb-4 text-red-900">
+            All adjustments created by this count will be reversed.
+          </p>
+          <DeleteDialog
+            action={deleteInventoryCountFormAction}
+            fieldName="countId"
+            entityId={result.summary.id}
+            triggerLabel="Delete Inventory Count"
+            title={`Delete Inventory Count ${result.summary.internalCode}?`}
+            description="All inventory adjustments created by this count will be reversed. This action cannot be undone."
+            details={
+              <dl className="grid gap-2 sm:grid-cols-2">
+                <div>
+                  <dt className="text-sm text-slate-500">Date</dt>
+                  <dd className="font-semibold">
+                    {formatDateTime(result.summary.completedAtMs)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-sm text-slate-500">Items checked</dt>
+                  <dd className="font-semibold">{result.summary.countedItems}</dd>
+                </div>
+                <div>
+                  <dt className="text-sm text-slate-500">Adjustments reversed</dt>
+                  <dd className="font-semibold">{result.summary.adjustmentCount}</dd>
+                </div>
+              </dl>
+            }
+            confirmLabel="Delete Inventory Count"
+          />
+        </section>
+      ) : null}
     </main>
   );
 }

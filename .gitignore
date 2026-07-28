@@ -1,0 +1,37 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# next.js
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# secrets — §15: секреты только в переменных окружения, .env в репозиторий не попадает
+.env
+.env.*
+!.env.example
+
+# database — учётные данные и остатки клиники, в VCS не хранятся
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# uploaded item photos (защищённое хранилище, не публичная статика)
+uploads/
+public/uploads/
+
+# testing
+coverage/
+
+# misc
+.DS_Store
+*.log
+npm-debug.log*
+.vercel

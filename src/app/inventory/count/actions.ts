@@ -1,0 +1,98 @@
+'use server';
+
+/**
+ * Тонкие серверные обёртки над слоем действий инвентаризации
+ * (`src/actions/inventory-count.ts`).
+ *
+ * Здесь только плумбинг Next: сессия, revalidate, redirect. Проверка роли,
+ * валидация и формулировки ошибок — в слое действий, корректировка остатка
+ * движением `count_correction` — в `src/domain/inventory-count.ts`.
+ *
+ * Сессия и роль проверяются на сервере в КАЖДОМ действии (§15, §18.22):
+ * §3.2 запрещает Staff ручную корректировку остатков, поэтому прямой вызов из
+ * под Staff получает отказ, даже если кнопку восстановили в браузере.
+ */
+import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
+import {
+  applyInventoryCountAction,
+  cancelInventoryCountAction,
+  recordCountLineAction,
+  scanForCountAction,
+  startInventoryCountAction,
+  type ApplyCountResultView,
+  type CountScanTargetView,
+  type RecordCountLineResult,
+} from '@/actions/inventory-count';
+import { toFailure, type ActionFailure, type ActionResult } from '@/actions/result';
+import { requireActor } from '@/auth/guards';
+import { getDb } from '@/db/client';
+import type { Actor } from '@/domain/actor';
+
+async function actorOrFailure(): Promise<{ actor: Actor } | { failure: ActionFailure }> {
+  try {
+    return { actor: await requireActor() };
+  } catch (error) {
+    return { failure: toFailure(error) };
+  }
+}
+
+/** §5.10, шаг 1: Admin начинает новую инвентаризацию. */
+export async function startInventoryCountFormAction(): Promise<void> {
+  const auth = await actorOrFailure();
+  if ('failure' in auth) redirect('/login');
+
+  const result = startInventoryCountAction(getDb(), auth.actor);
+  if (!result.ok) redirect(`/inventory?error=${encodeURIComponent(result.error)}`);
+
+  revalidatePath('/inventory/count');
+  redirect('/inventory/count');
+}
+
+export async function scanForCountServerAction(input: {
+  countId: number;
+  barcode: string;
+}): Promise<ActionResult<CountScanTargetView>> {
+  const auth = await actorOrFailure();
+  if ('failure' in auth) return auth.failure;
+  return scanForCountAction(getDb(), auth.actor, input);
+}
+
+export async function recordCountLineServerAction(input: {
+  countId: number;
+  itemId: number;
+  countedQuantity: number;
+}): Promise<ActionResult<RecordCountLineResult>> {
+  const auth = await actorOrFailure();
+  if ('failure' in auth) return auth.failure;
+
+  const result = recordCountLineAction(getDb(), auth.actor, input);
+  if (result.ok) revalidatePath('/inventory/count');
+  return result;
+}
+
+/** §5.10, шаг 6: после подтверждения система корректирует остаток. */
+export async function applyInventoryCountServerAction(
+  countId: number,
+): Promise<ActionResult<ApplyCountResultView>> {
+  const auth = await actorOrFailure();
+  if ('failure' in auth) return auth.failure;
+
+  const result = applyInventoryCountAction(getDb(), auth.actor, countId);
+  if (result.ok) {
+    revalidatePath('/inventory');
+    revalidatePath('/inventory/count');
+  }
+  return result;
+}
+
+export async function cancelInventoryCountServerAction(
+  countId: number,
+): Promise<ActionResult<{ countId: number }>> {
+  const auth = await actorOrFailure();
+  if ('failure' in auth) return auth.failure;
+
+  const result = cancelInventoryCountAction(getDb(), auth.actor, countId);
+  if (result.ok) revalidatePath('/inventory/count');
+  return result;
+}

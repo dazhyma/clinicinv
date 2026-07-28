@@ -1,0 +1,69 @@
+@import 'tailwindcss';
+
+/*
+ * §14.1/§14.2: интерфейс рассчитан на сенсорный экран в операционной —
+ * крупные элементы, высокая контрастность. Базовый размер шрифта увеличен,
+ * минимальная цель нажатия — 48 px.
+ */
+@theme {
+  --color-ok: oklch(0.62 0.17 149);
+  --color-danger: oklch(0.58 0.22 27);
+}
+
+html {
+  font-size: 17px;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+button,
+a[role='button'],
+input[type='submit'] {
+  min-height: 48px;
+}
+
+/*
+ * §5.6: печатная страница этикетки без навигации, фонов и лишних элементов.
+ *
+ * На экране этикетка обведена пунктиром, чтобы были видны её границы; на бумаге
+ * рамки нет — печатается только то, что относится к этикетке.
+ */
+.label-graphic svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.label {
+  outline: 1px dashed #cbd5e1;
+}
+
+@page {
+  margin: 6mm;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  html,
+  body {
+    background: #fff;
+  }
+
+  .label-sheet {
+    margin: 0;
+    padding: 0;
+    gap: 0;
+  }
+
+  .label {
+    outline: none;
+    /* Этикетка не должна разрываться между страницами. */
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

@@ -1,0 +1,83 @@
+import Link from 'next/link';
+import type { ItemView } from '@/actions/items';
+import { ItemPhoto } from '../../_components/item-photo';
+
+/**
+ * Карточка предмета в списке (§5.2).
+ *
+ * Состав по ТЗ: фотография, название, текущее количество, себестоимость за
+ * единицу, кнопки Edit и View Barcode. Пример разметки из §5.2:
+ *   [Фото] Gauze 4×4 / In stock: 147 · Cost: $3.25 / [Edit] [View Barcode]
+ *
+ * Себестоимость печатается ТОЛЬКО если сервер её прислал: при выключенной
+ * настройке `staff_can_see_cost` поля `unitCostFormatted` в объекте нет вовсе
+ * (§3.2, §15) — скрывать нечего.
+ *
+ * На узком экране блок кнопок переносится под текст, но кнопки остаются
+ * крупными (§5.2, §14.1): минимальная высота задана глобально в globals.css.
+ */
+export function ItemCard({ item, canEdit }: { item: ItemView; canEdit: boolean }) {
+  const lowStock = item.isLowStock;
+
+  return (
+    <li
+      className={`flex flex-wrap items-center gap-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ${
+        lowStock ? 'ring-2 ring-amber-400' : 'ring-slate-200'
+      }`}
+    >
+      <ItemPhoto photoUrl={item.photoUrl} name={item.name} size={64} />
+
+      <div className="min-w-40 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xl font-semibold">{item.name}</span>
+          {lowStock ? (
+            <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-900">
+              Low stock
+            </span>
+          ) : null}
+          {item.status === 'inactive' ? (
+            <span className="rounded-full bg-slate-200 px-3 py-1 text-sm font-semibold text-slate-700">
+              Inactive
+            </span>
+          ) : null}
+        </div>
+
+        <p className="mt-1 text-lg text-slate-700">
+          In stock: <strong>{item.currentQuantity}</strong> {item.unitOfMeasurement}
+          {item.unitCostFormatted ? <> · Cost: {item.unitCostFormatted}</> : null}
+        </p>
+
+        <p className="mt-1 font-mono text-sm text-slate-500">
+          {item.internalCode}
+          {item.sku ? ` · SKU ${item.sku}` : ''}
+          {item.referenceNumber ? ` · Ref ${item.referenceNumber}` : ''}
+        </p>
+      </div>
+
+      <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+        {canEdit ? (
+          <>
+            <Link
+              href={`/inventory/items/${item.id}/edit`}
+              className="flex-1 rounded-xl border border-slate-300 px-5 py-3 text-center text-lg font-medium sm:flex-none"
+            >
+              Edit
+            </Link>
+            <Link
+              href={`/inventory/items/${item.id}/stock`}
+              className="flex-1 rounded-xl border border-slate-300 px-5 py-3 text-center text-lg font-medium sm:flex-none"
+            >
+              Stock
+            </Link>
+          </>
+        ) : null}
+        <Link
+          href={`/inventory/items/${item.id}/barcode`}
+          className="flex-1 rounded-xl border border-slate-300 px-5 py-3 text-center text-lg font-medium sm:flex-none"
+        >
+          View Barcode
+        </Link>
+      </div>
+    </li>
+  );
+}

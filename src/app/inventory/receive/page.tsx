@@ -35,7 +35,7 @@ export default async function ReceiveStockPickerPage({
         subtitle="Confirm the item, then enter the received quantity and cost."
         backHref="/inventory"
         backLabel="Inventory"
-        account={account}
+        account={{ username: account.username, role: account.role }}
       />
 
       <div className="mb-5">

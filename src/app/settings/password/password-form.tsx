@@ -2,6 +2,8 @@
 
 import { useActionState } from 'react';
 import type { AccountOptionView } from '@/actions/accounts';
+import { MIN_PASSWORD_LENGTH } from '@/auth/password-rules';
+import { PasswordInput } from '../../_components/password-input';
 import type { FormState } from '../../inventory/actions';
 import { ErrorBanner, Field, SubmitButton, SuccessBanner } from '../../inventory/_components/form-field';
 import { changePasswordFormAction } from './actions';
@@ -36,7 +38,7 @@ export function PasswordForm({
         label="Account"
         required
         error={fieldErrors.accountId}
-        hint="Both accounts are shared by the whole clinic (§2.3). Changing a password logs that account out everywhere."
+        hint="Changing a password signs that account out on other devices. This Admin session stays open when changing its own password."
       >
         {(props) => (
           <select defaultValue={String(currentAccountId)} {...props}>
@@ -58,7 +60,7 @@ export function PasswordForm({
         error={fieldErrors.currentPassword}
         hint="The password of the account you are signed in with, not the one you are changing."
       >
-        {(props) => <input type="password" autoComplete="current-password" {...props} />}
+        {(props) => <PasswordInput autoComplete="current-password" {...props} />}
       </Field>
 
       <Field
@@ -66,9 +68,15 @@ export function PasswordForm({
         label="New password"
         required
         error={fieldErrors.newPassword}
-        hint="At least 10 characters. Stored only as an argon2id hash."
+        hint={`At least ${MIN_PASSWORD_LENGTH} characters. Stored only as an argon2id hash.`}
       >
-        {(props) => <input type="password" autoComplete="new-password" {...props} />}
+        {(props) => (
+          <PasswordInput
+            autoComplete="new-password"
+            minLength={MIN_PASSWORD_LENGTH}
+            {...props}
+          />
+        )}
       </Field>
 
       <Field
@@ -77,7 +85,13 @@ export function PasswordForm({
         required
         error={fieldErrors.confirmPassword}
       >
-        {(props) => <input type="password" autoComplete="new-password" {...props} />}
+        {(props) => (
+          <PasswordInput
+            autoComplete="new-password"
+            minLength={MIN_PASSWORD_LENGTH}
+            {...props}
+          />
+        )}
       </Field>
 
       <SubmitButton pendingLabel="Changing…">Change Password</SubmitButton>

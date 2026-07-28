@@ -57,7 +57,7 @@ export default async function OperationPage({ params }: { params: Promise<{ id: 
           title={`Case ${state.caseCode}`}
           backHref="/operations"
           backLabel="Operations"
-          account={account}
+          account={{ username: account.username, role: account.role }}
         />
 
         <OperationHeaderCard state={state} />
@@ -135,7 +135,7 @@ export default async function OperationPage({ params }: { params: Promise<{ id: 
         title="Operation"
         backHref="/operations"
         backLabel="Operations"
-        account={account}
+        account={{ username: account.username, role: account.role }}
       />
       <OperationScreen
         initialState={state}

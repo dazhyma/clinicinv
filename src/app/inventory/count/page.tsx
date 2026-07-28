@@ -29,7 +29,7 @@ export default async function InventoryCountPage() {
         title="Inventory Count"
         backHref="/inventory"
         backLabel="Inventory"
-        account={account}
+        account={{ username: account.username, role: account.role }}
       />
 
       {draft ? (

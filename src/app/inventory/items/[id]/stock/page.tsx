@@ -47,7 +47,7 @@ export default async function ItemStockPage({
         }
         backHref="/inventory"
         backLabel="Inventory"
-        account={account}
+        account={{ username: account.username, role: account.role }}
       />
 
       <section className="mb-6 flex items-center gap-4 rounded-2xl bg-white p-4 ring-1 ring-slate-200">

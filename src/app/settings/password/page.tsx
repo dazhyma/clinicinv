@@ -29,7 +29,7 @@ export default async function ChangePasswordPage() {
         title="Change Password"
         backHref="/settings"
         backLabel="Settings"
-        account={account}
+        account={{ username: account.username, role: account.role }}
       />
 
       <p className="mb-6 max-w-xl text-base text-slate-600">

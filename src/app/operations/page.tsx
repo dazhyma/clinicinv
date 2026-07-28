@@ -42,7 +42,12 @@ export default async function OperationsPage({
 
   return (
     <main className="mx-auto flex min-h-screen max-w-4xl flex-col p-4 sm:p-6">
-      <AppHeader title="Operations" backHref="/" backLabel="Home" account={account} />
+      <AppHeader
+        title="Operations"
+        backHref="/"
+        backLabel="Home"
+        account={{ username: account.username, role: account.role }}
+      />
 
       {params.finished ? (
         <p role="status" className="mb-4 rounded-xl bg-emerald-50 px-4 py-3 text-lg text-emerald-900">

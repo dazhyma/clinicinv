@@ -5,6 +5,7 @@
  * не хранится и не логируется нигде.
  */
 import { hash, verify, type Algorithm } from '@node-rs/argon2';
+export { MIN_PASSWORD_LENGTH } from './password-rules';
 
 /**
  * `Algorithm` в @node-rs/argon2 — ambient const enum, к его значению нельзя
@@ -30,8 +31,6 @@ const ARGON2_OPTIONS = {
  */
 export const DUMMY_PASSWORD_HASH =
   '$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0c2FsdA$0zqz6xwvjPPZ0m3Kk7Z0Ay0lZk8sT7t3n5Lk0Z9zYb0';
-
-export const MIN_PASSWORD_LENGTH = 10;
 
 export async function hashPassword(password: string): Promise<string> {
   return hash(password, ARGON2_OPTIONS);

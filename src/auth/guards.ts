@@ -36,9 +36,14 @@ export async function requirePageAdmin(): Promise<SessionContext> {
 
 /** Для route handlers и server actions: без сессии — доменная ошибка, не редирект. */
 export async function requireActor(): Promise<Actor> {
+  return (await requireSessionContext()).actor;
+}
+
+/** Server Action, которому кроме роли нужен id текущей подтверждённой сессии. */
+export async function requireSessionContext(): Promise<SessionContext> {
   const context = await getSessionContext();
   if (!context) throw errors.notAuthenticated();
-  return context.actor;
+  return context;
 }
 
 export async function requireAdmin(action: string): Promise<Actor> {

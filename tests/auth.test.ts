@@ -205,8 +205,8 @@ describe('Слой действий смены пароля (§3.3, FR-12)', () 
 
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('unreachable');
-    expect(result.error).toBe('Current password is incorrect');
-    expect(result.fieldErrors?.currentPassword).toBe('Current password is incorrect');
+    expect(result.error).toBe('Current Admin password is incorrect');
+    expect(result.fieldErrors?.currentPassword).toContain('Current Admin password is incorrect');
   });
 
   it('несовпадение и короткий пароль дают ошибки на своих полях', async () => {
@@ -278,30 +278,31 @@ describe('Слой действий смены пароля (§3.3, FR-12)', () 
     expect(ok.account.username).toBe('staff');
   });
 
-  it('Admin меняет пароль себе: его сессии отозваны и помечены как selfChanged', async () => {
+  it('Admin меняет пароль себе: текущая сессия сохраняется, остальные отзываются', async () => {
     const ctx = setupTestDb();
     await withRealPasswords(ctx);
 
     const own = createSession(ctx.db, ctx.admin.accountId);
     const otherDevice = createSession(ctx.db, ctx.admin.accountId);
 
-    const result = await changeAccountPasswordAction(ctx.db, ctx.admin, {
-      accountId: String(ctx.admin.accountId),
-      currentPassword: PASSWORD,
-      newPassword: NEW_PASSWORD,
-      confirmPassword: NEW_PASSWORD,
-    });
+    const result = await changeAccountPasswordAction(
+      ctx.db,
+      ctx.admin,
+      {
+        accountId: String(ctx.admin.accountId),
+        currentPassword: PASSWORD,
+        newPassword: NEW_PASSWORD,
+        confirmPassword: NEW_PASSWORD,
+      },
+      { currentSessionId: own.sessionId },
+    );
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('unreachable');
     expect(result.data.selfChanged).toBe(true);
-    expect(result.data.revokedSessions).toBe(2);
-    expect(validateSessionToken(ctx.db, own.token)).toBeNull();
+    expect(result.data.revokedSessions).toBe(1);
+    expect(validateSessionToken(ctx.db, own.token)).not.toBeNull();
     expect(validateSessionToken(ctx.db, otherDevice.token)).toBeNull();
-
-    // Обёртка выдаёт новую сессию вместо отозванной — «повисшего» состояния нет.
-    const reissued = createSession(ctx.db, ctx.admin.accountId);
-    expect(validateSessionToken(ctx.db, reissued.token)?.actor.role).toBe('Admin');
   });
 
   it('в журнал попадает только факт смены и затронутый аккаунт, без значений пароля', async () => {

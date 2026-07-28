@@ -40,7 +40,7 @@ export default async function EditItemPage({ params }: { params: Promise<{ id: s
         subtitle="Editing an item never changes finished operations."
         backHref="/inventory"
         backLabel="Inventory"
-        account={account}
+        account={{ username: account.username, role: account.role }}
       />
       <ItemForm
         mode="edit"

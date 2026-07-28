@@ -16,7 +16,7 @@ import { userAccounts, type UserRole } from '@/db/schema';
 import { isAdmin, type Actor } from '@/domain/actor';
 import { setAccountPassword } from '@/auth/login';
 import { DUMMY_PASSWORD_HASH, MIN_PASSWORD_LENGTH, verifyPassword } from '@/auth/password';
-import { revokeAllSessionsForAccount } from '@/auth/session';
+import { revokeAllSessionsForAccount, revokeOtherSessionsForAccount } from '@/auth/session';
 import { FieldValidator, type RawFormValue } from './parse';
 import { fail, failFields, forbidden, runAsyncAction, type ActionResult } from './result';
 
@@ -54,9 +54,9 @@ export interface ChangedPassword {
   accountId: number;
   username: string;
   role: UserRole;
-  /** Admin сменил пароль собственному аккаунту — его сессию нужно перевыпустить. */
+  /** Admin сменил пароль собственному аккаунту. */
   selfChanged: boolean;
-  /** Сколько сессий затронутого аккаунта отозвано (включая собственную). */
+  /** Сколько других сессий затронутого аккаунта отозвано. */
   revokedSessions: number;
 }
 
@@ -79,16 +79,16 @@ function rawPassword(value: RawFormValue): string {
  * незалоченному планшету с открытой сессией Admin, менял бы пароли обоих
  * аккаунтов клиники.
  *
- * После смены ВСЕ сессии затронутого аккаунта отзываются (§15): иначе
- * уволившийся сотрудник остался бы залогинен на своём устройстве, и смена
- * пароля не решала бы задачу, ради которой её делают. Собственную сессию Admin
- * при смене своего пароля перевыпускает вызывающая обёртка — по флагу
- * `selfChanged`, чтобы «повисшего» состояния не возникало.
+ * После смены отзываются все сессии затронутого аккаунта (§15). Исключение —
+ * текущая сессия Admin при смене собственного пароля: личность уже повторно
+ * подтверждена старым паролем, поэтому текущая вкладка остаётся рабочей, а все
+ * остальные устройства немедленно теряют доступ.
  */
 export async function changeAccountPasswordAction(
   db: AppDatabase,
   actor: Actor,
   input: ChangePasswordInput,
+  options: { currentSessionId?: number } = {},
 ): Promise<ActionResult<ChangedPassword>> {
   // §18.22: роль проверяется до всего остального — Staff не должен даже узнать,
   // какие поля формы приняты и какие аккаунты существуют.
@@ -128,14 +128,20 @@ export async function changeAccountPasswordAction(
   const currentOk = await verifyPassword(self?.passwordHash ?? DUMMY_PASSWORD_HASH, currentPassword);
   if (!self || !currentOk) {
     return failFields(
-      { currentPassword: 'Current password is incorrect' },
-      'Current password is incorrect',
+      {
+        currentPassword:
+          'Current Admin password is incorrect. Enter the password for the account you are signed in with.',
+      },
+      'Current Admin password is incorrect',
     );
   }
 
   return runAsyncAction(async () => {
     await setAccountPassword(db, target.id, newPassword, actor);
-    const revokedSessions = revokeAllSessionsForAccount(db, target.id);
+    const revokedSessions =
+      target.id === actor.accountId && options.currentSessionId
+        ? revokeOtherSessionsForAccount(db, target.id, options.currentSessionId)
+        : revokeAllSessionsForAccount(db, target.id);
 
     return {
       accountId: target.id,

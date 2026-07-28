@@ -52,7 +52,12 @@ export default async function InventoryItemsPage({
 
   return (
     <main className="mx-auto flex min-h-screen max-w-5xl flex-col p-4 sm:p-6">
-      <AppHeader title="Inventory" backHref="/" backLabel="Home" account={account} />
+      <AppHeader
+        title="Inventory"
+        backHref="/"
+        backLabel="Home"
+        account={{ username: account.username, role: account.role }}
+      />
       <InventoryTabs active="items" />
 
       {params.created ? (

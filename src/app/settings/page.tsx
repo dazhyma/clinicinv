@@ -22,7 +22,12 @@ export default async function SettingsPage() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col p-4 sm:p-6">
-      <AppHeader title="Settings" backHref="/" backLabel="Home" account={account} />
+      <AppHeader
+        title="Settings"
+        backHref="/"
+        backLabel="Home"
+        account={{ username: account.username, role: account.role }}
+      />
       <SettingsForm settings={settings} />
 
       {/*
@@ -34,8 +39,8 @@ export default async function SettingsPage() {
       <section className="mt-10 border-t border-slate-200 pt-6">
         <h2 className="text-xl font-semibold">Accounts</h2>
         <p className="mt-1 max-w-xl text-base text-slate-600">
-          Change the password of either shared account. Changing a password signs that account out
-          on every device.
+          Change the password of either shared account. Other signed-in devices for that account
+          are logged out.
         </p>
         <Link
           href="/settings/password"

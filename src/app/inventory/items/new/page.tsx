@@ -24,7 +24,7 @@ export default async function NewItemPage() {
         subtitle="A permanent internal code and barcode are generated automatically on save."
         backHref="/inventory"
         backLabel="Inventory"
-        account={account}
+        account={{ username: account.username, role: account.role }}
       />
       <ItemForm mode="create" action={createItemFormAction} options={options} />
     </main>

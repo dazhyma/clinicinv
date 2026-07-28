@@ -18,7 +18,10 @@ export default async function HomePage() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-4xl flex-col p-4 sm:p-6">
-      <AppHeader title="Clinic Inventory" account={account} />
+      <AppHeader
+        title="Clinic Inventory"
+        account={{ username: account.username, role: account.role }}
+      />
 
       <div className="grid flex-1 content-start gap-4 sm:grid-cols-2">
         <Link

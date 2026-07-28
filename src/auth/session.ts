@@ -10,7 +10,7 @@
  * Поэтому здесь нет и не должно быть никакой логики «очистить операции».
  */
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { and, eq, gt, isNull, lt, or } from 'drizzle-orm';
+import { and, eq, gt, isNull, lt, ne, or } from 'drizzle-orm';
 import { BASE_PATH } from '@/base-path';
 import type { AppDatabase } from '@/db/client';
 import { sessions, userAccounts, type UserAccountRow } from '@/db/schema';
@@ -128,6 +128,33 @@ export function revokeAllSessionsForAccount(db: AppDatabase, accountId: number):
     .update(sessions)
     .set({ revokedAt: new Date() })
     .where(and(eq(sessions.accountId, accountId), isNull(sessions.revokedAt)))
+    .run();
+  return result.changes;
+}
+
+/**
+ * Отзывает все сессии аккаунта, кроме текущей подтверждённой сессии.
+ *
+ * При смене собственного пароля Admin уже повторно подтвердил личность старым
+ * паролем. Сохранение текущей сессии устраняет хрупкий промежуток, в котором
+ * Server Action сначала отзывал собственную сессию, а затем пытался записать
+ * новую cookie. Все остальные устройства по-прежнему немедленно теряют доступ.
+ */
+export function revokeOtherSessionsForAccount(
+  db: AppDatabase,
+  accountId: number,
+  currentSessionId: number,
+): number {
+  const result = db
+    .update(sessions)
+    .set({ revokedAt: new Date() })
+    .where(
+      and(
+        eq(sessions.accountId, accountId),
+        ne(sessions.id, currentSessionId),
+        isNull(sessions.revokedAt),
+      ),
+    )
     .run();
   return result.changes;
 }

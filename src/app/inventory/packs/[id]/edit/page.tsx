@@ -42,7 +42,7 @@ export default async function EditPackPage({ params }: { params: Promise<{ id: s
         subtitle="Changes apply to future scans only."
         backHref="/inventory/packs"
         backLabel="Packs"
-        account={account}
+        account={{ username: account.username, role: account.role }}
       />
       <PackForm mode="edit" action={updatePackFormAction} items={items} pack={pack} />
     </main>

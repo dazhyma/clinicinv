@@ -6,6 +6,7 @@ import { ADJUSTMENT_REASONS } from '@/db/schema';
 import type { ItemView } from '@/actions/items';
 import type { FormState } from '../actions';
 import { newClientEventId } from '../../_components/client-event-id';
+import { useUnsavedChanges } from '../../_components/use-unsaved-changes';
 import { ErrorBanner, Field, SubmitButton, SuccessBanner } from './form-field';
 
 const initialState: FormState = {};
@@ -43,6 +44,8 @@ export function ReceiveStockForm({
   const [state, formAction] = useActionState(action, initialState);
   const fieldErrors = state.fieldErrors ?? {};
   const clientEventId = useIdempotencyKey(state);
+  const [dirty, setDirty] = useState(false);
+  useUnsavedChanges(dirty && !state.ok);
 
   useEffect(() => {
     if (!state.ok || !returnToScanner) return;
@@ -50,7 +53,7 @@ export function ReceiveStockForm({
   }, [returnToScanner, router, state.ok]);
 
   return (
-    <form action={formAction} className="flex flex-col gap-5">
+    <form action={formAction} onChangeCapture={() => setDirty(true)} className="flex flex-col gap-5">
       <input type="hidden" name="itemId" value={item.id} />
       <input type="hidden" name="clientEventId" value={clientEventId} />
 
@@ -111,9 +114,11 @@ export function AdjustStockForm({
   const fieldErrors = state.fieldErrors ?? {};
   const clientEventId = useIdempotencyKey(state);
   const [mode, setMode] = useState<'delta' | 'set'>('delta');
+  const [dirty, setDirty] = useState(false);
+  useUnsavedChanges(dirty && !state.ok);
 
   return (
-    <form action={formAction} className="flex flex-col gap-5">
+    <form action={formAction} onChangeCapture={() => setDirty(true)} className="flex flex-col gap-5">
       <input type="hidden" name="itemId" value={item.id} />
       <input type="hidden" name="clientEventId" value={clientEventId} />
 

@@ -27,7 +27,7 @@ export default async function NewPackPage() {
         title="Add New Pack"
         subtitle="A pack adds all of its items with one scan."
         backHref="/inventory/packs"
-        backLabel="Packs"
+        backLabel="Items & Packs"
         account={{ username: account.username, role: account.role }}
       />
       <PackForm mode="create" action={createPackFormAction} items={items} />

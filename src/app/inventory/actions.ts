@@ -24,6 +24,7 @@ import { toFailure, type FieldErrors } from '@/actions/result';
 import { requireActor } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import type { Actor } from '@/domain/actor';
+import { errors } from '@/domain/errors';
 import { deletePhotoByUrl, storeItemPhoto } from '@/photos/storage';
 
 /** Состояние формы для `useActionState`. Сериализуемое. */
@@ -93,6 +94,7 @@ export async function createItemFormAction(
 ): Promise<FormState> {
   const auth = await actorOrState();
   if ('state' in auth) return auth.state;
+  if (auth.actor.role !== 'Admin') return toStateFailure(errors.forbidden('create item'));
 
   let photoUrl: string | null | undefined;
   try {
@@ -112,8 +114,8 @@ export async function createItemFormAction(
     return { ok: false, error: result.error, fieldErrors: result.fieldErrors };
   }
 
-  revalidatePath('/inventory');
-  redirect(`/inventory?created=${encodeURIComponent(result.data.internalCode)}`);
+  revalidatePath('/inventory/catalog');
+  redirect(`/inventory/catalog?created=${encodeURIComponent(result.data.internalCode)}`);
 }
 
 // --- Edit (§5.7) ------------------------------------------------------------
@@ -124,6 +126,7 @@ export async function updateItemFormAction(
 ): Promise<FormState> {
   const auth = await actorOrState();
   if ('state' in auth) return auth.state;
+  if (auth.actor.role !== 'Admin') return toStateFailure(errors.forbidden('edit item'));
 
   const itemId = Number(text(formData, 'itemId'));
   if (!Number.isSafeInteger(itemId) || itemId <= 0) {
@@ -147,12 +150,12 @@ export async function updateItemFormAction(
     return { ok: false, error: result.error, fieldErrors: result.fieldErrors };
   }
 
-  // Файл заменённой фотографии больше не нужен ни одной записи.
-  await deletePhotoByUrl(result.data.replacedPhotoUrl);
+  // Старые фото сохраняются: завершённые Inventory Count хранят исторический
+  // photo snapshot и должны оставаться воспроизводимыми.
 
-  revalidatePath('/inventory');
+  revalidatePath('/inventory/catalog');
   revalidatePath(`/inventory/items/${itemId}/edit`);
-  redirect(`/inventory?updated=${encodeURIComponent(result.data.internalCode)}`);
+  redirect(`/inventory/catalog?updated=${encodeURIComponent(result.data.internalCode)}`);
 }
 
 // --- Receive Stock (§5.8) ---------------------------------------------------

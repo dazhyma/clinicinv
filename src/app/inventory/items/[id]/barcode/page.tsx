@@ -36,8 +36,8 @@ export default async function ItemBarcodePage({ params }: { params: Promise<{ id
         title={item.name}
         code={item.barcodeValue}
         labelSvg={renderLabelSvg(item.barcodeValue)}
-        backHref="/inventory"
-        backLabel="Back to Inventory"
+        backHref={`/inventory/items/${item.id}`}
+        backLabel="Back to Item"
       />
     </main>
   );

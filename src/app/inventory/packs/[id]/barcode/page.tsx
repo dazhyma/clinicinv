@@ -34,8 +34,8 @@ export default async function PackBarcodePage({ params }: { params: Promise<{ id
         title={pack.name}
         code={pack.internalCode}
         labelSvg={renderLabelSvg(pack.barcodeValue)}
-        backHref="/inventory/packs"
-        backLabel="Back to Packs"
+        backHref={`/inventory/packs/${pack.id}`}
+        backLabel="Back to Pack"
       />
     </main>
   );

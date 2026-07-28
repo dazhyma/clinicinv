@@ -40,8 +40,8 @@ export default async function EditPackPage({ params }: { params: Promise<{ id: s
       <AppHeader
         title={pack.name}
         subtitle="Changes apply to future scans only."
-        backHref="/inventory/packs"
-        backLabel="Packs"
+        backHref={`/inventory/packs/${pack.id}`}
+        backLabel="Pack Details"
         account={{ username: account.username, role: account.role }}
       />
       <PackForm mode="edit" action={updatePackFormAction} items={items} pack={pack} />

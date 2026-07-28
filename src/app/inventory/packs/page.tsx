@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { listPacksForActor } from '@/actions/packs';
+import { withBasePath } from '@/base-path';
 import { requirePage } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import { AppHeader } from '../../_components/app-header';
@@ -9,6 +10,7 @@ import { PackCard } from '../_components/pack-card';
 export const dynamic = 'force-dynamic';
 
 interface SearchParams {
+  q?: string;
   includeInactive?: string;
   created?: string;
   updated?: string;
@@ -34,18 +36,43 @@ export default async function InventoryPacksPage({
   const params = await searchParams;
   const isAdmin = account.role === 'Admin';
   const includeInactive = params.includeInactive === '1';
+  const q = params.q ?? '';
 
-  const result = listPacksForActor(getDb(), actor, { includeInactive });
+  const result = listPacksForActor(getDb(), actor, { includeInactive, q });
 
   return (
     <main className="mx-auto flex min-h-screen max-w-5xl flex-col p-4 sm:p-6">
       <AppHeader
-        title="Inventory"
-        backHref="/"
-        backLabel="Home"
+        title="Items & Packs"
+        backHref="/inventory"
+        backLabel="Inventory"
         account={{ username: account.username, role: account.role }}
       />
       <InventoryTabs active="packs" />
+
+      <form
+        method="get"
+        action={withBasePath('/inventory/packs')}
+        className="mb-4 flex flex-col gap-3 sm:flex-row"
+      >
+        <label htmlFor="pack-q" className="sr-only">
+          Search packs
+        </label>
+        <input
+          id="pack-q"
+          name="q"
+          type="search"
+          defaultValue={q}
+          placeholder="Search packs by name or code…"
+          className="flex-1 rounded-lg border border-slate-300 px-4 py-3 text-lg"
+        />
+        <button
+          type="submit"
+          className="rounded-xl border border-slate-300 bg-white px-6 py-3 text-lg font-semibold"
+        >
+          Search
+        </button>
+      </form>
 
       {params.created ? (
         <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-lg text-emerald-900">

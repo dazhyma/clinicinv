@@ -45,8 +45,8 @@ export default async function ItemStockPage({
             ? 'Receive stock or correct the quantity on hand.'
             : 'Enter the quantity received and save the delivery.'
         }
-        backHref="/inventory"
-        backLabel="Inventory"
+        backHref={`/inventory/items/${item.id}`}
+        backLabel="Item Details"
         account={{ username: account.username, role: account.role }}
       />
 

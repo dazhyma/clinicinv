@@ -3,7 +3,7 @@ import Link from 'next/link';
 /** §5.1: раздел Inventory содержит как минимум вкладки Items и Packs. */
 export function InventoryTabs({ active }: { active: 'items' | 'packs' }) {
   const tabs = [
-    { id: 'items', label: 'Items', href: '/inventory' },
+    { id: 'items', label: 'Items', href: '/inventory/catalog' },
     { id: 'packs', label: 'Packs', href: '/inventory/packs' },
   ] as const;
 

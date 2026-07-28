@@ -1,9 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import type { ItemView } from '@/actions/items';
 import { PHOTO_ACCEPT_ATTRIBUTE } from '@/photos/shared';
+import { useUnsavedChanges } from '../../_components/use-unsaved-changes';
 import type { FormState } from '../actions';
 import { ErrorBanner, Field, SubmitButton } from './form-field';
 import { ItemPhoto } from '../../_components/item-photo';
@@ -43,10 +44,17 @@ export function ItemForm({
   unitCostValue?: string;
 }) {
   const [state, formAction] = useActionState(action, initialState);
+  const [dirty, setDirty] = useState(false);
   const fieldErrors = state.fieldErrors ?? {};
+  useUnsavedChanges(dirty && !state.ok);
 
   return (
-    <form action={formAction} className="flex flex-col gap-6" encType="multipart/form-data">
+    <form
+      action={formAction}
+      onChangeCapture={() => setDirty(true)}
+      className="flex flex-col gap-6"
+      encType="multipart/form-data"
+    >
       {item ? <input type="hidden" name="itemId" value={item.id} /> : null}
 
       <ErrorBanner message={state.error} />
@@ -258,7 +266,7 @@ export function ItemForm({
       <div className="flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row-reverse sm:justify-start sm:gap-4">
         <SubmitButton>{mode === 'create' ? 'Save Item' : 'Save Changes'}</SubmitButton>
         <Link
-          href="/inventory"
+          href={item ? `/inventory/items/${item.id}` : '/inventory/catalog'}
           className="rounded-xl border border-slate-300 px-5 py-4 text-center text-lg text-slate-700"
         >
           Cancel

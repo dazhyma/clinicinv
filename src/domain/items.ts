@@ -18,6 +18,7 @@ import { assertAdmin, assertInventoryWorker, isAdmin, type Actor } from './actor
 import { AUDIT_ACTIONS, writeAudit } from './audit';
 import { ITEM_CODE_PREFIX, nextInternalCode, normalizeScannedCode } from './codes';
 import { errors } from './errors';
+import { writeItemHistoryEvent } from './item-history';
 import { assertNonNegativeCents, formatCents } from './money';
 import { applyMovement, idempotencyKeys, runInTransaction } from './movements';
 import { assertNonNegativeQuantity, assertPositiveQuantity, isValidQuantity } from './quantity';
@@ -167,6 +168,14 @@ export function createItem(db: AppDatabase, actor: Actor, input: CreateItemInput
       entityId: created.id,
       summary: `${internalCode} "${name}" @ ${formatCents(input.currentUnitCostCents)}, initial ${input.initialQuantity}`,
     });
+    writeItemHistoryEvent(tx, {
+      itemId: created.id,
+      eventType: 'item.created',
+      newValue: name,
+      actorAccountId: actor.accountId,
+      actorRole: actor.role,
+      createdAt: now,
+    });
 
     return finalRow;
   });
@@ -278,6 +287,93 @@ export function updateItem(
         entityType: 'item',
         entityId: itemId,
         summary: `${existing.internalCode}: ${formatCents(existing.currentUnitCostCents)} -> ${formatCents(patch.currentUnitCostCents)}`,
+      });
+    }
+
+    const historyFields: Array<{
+      field: keyof UpdateItemPatch;
+      eventType: 'item.information_changed' | 'item.cost_changed';
+      oldValue: unknown;
+      newValue: unknown;
+    }> = [
+      {
+        field: 'name',
+        eventType: 'item.information_changed',
+        oldValue: existing.name,
+        newValue: updated.name,
+      },
+      {
+        field: 'photoUrl',
+        eventType: 'item.information_changed',
+        oldValue: existing.photoUrl,
+        newValue: updated.photoUrl,
+      },
+      {
+        field: 'sku',
+        eventType: 'item.information_changed',
+        oldValue: existing.sku,
+        newValue: updated.sku,
+      },
+      {
+        field: 'referenceNumber',
+        eventType: 'item.information_changed',
+        oldValue: existing.referenceNumber,
+        newValue: updated.referenceNumber,
+      },
+      {
+        field: 'currentUnitCostCents',
+        eventType: 'item.cost_changed',
+        oldValue: existing.currentUnitCostCents,
+        newValue: updated.currentUnitCostCents,
+      },
+      {
+        field: 'unitOfMeasurement',
+        eventType: 'item.information_changed',
+        oldValue: existing.unitOfMeasurement,
+        newValue: updated.unitOfMeasurement,
+      },
+      {
+        field: 'category',
+        eventType: 'item.information_changed',
+        oldValue: existing.category,
+        newValue: updated.category,
+      },
+      {
+        field: 'storageLocation',
+        eventType: 'item.information_changed',
+        oldValue: existing.storageLocation,
+        newValue: updated.storageLocation,
+      },
+      {
+        field: 'lowStockThreshold',
+        eventType: 'item.information_changed',
+        oldValue: existing.lowStockThreshold,
+        newValue: updated.lowStockThreshold,
+      },
+      {
+        field: 'notes',
+        eventType: 'item.information_changed',
+        oldValue: existing.notes,
+        newValue: updated.notes,
+      },
+      {
+        field: 'status',
+        eventType: 'item.information_changed',
+        oldValue: existing.status,
+        newValue: updated.status,
+      },
+    ];
+    const changedFields = new Set(Object.keys(patch));
+    for (const change of historyFields) {
+      if (!changedFields.has(change.field) || Object.is(change.oldValue, change.newValue)) continue;
+      writeItemHistoryEvent(tx, {
+        itemId,
+        eventType: change.eventType,
+        fieldName: change.field,
+        oldValue: change.oldValue == null ? null : String(change.oldValue),
+        newValue: change.newValue == null ? null : String(change.newValue),
+        actorAccountId: actor.accountId,
+        actorRole: actor.role,
       });
     }
 

@@ -9,7 +9,7 @@
  * существующие строки операций (§6.7, §18.17). Состав читается только в момент
  * сканирования.
  */
-import { eq } from 'drizzle-orm';
+import { and, eq, like, or, type SQL } from 'drizzle-orm';
 import type { AppDatabase, DbLike } from '@/db/client';
 import {
   barcodeRegistry,
@@ -216,10 +216,22 @@ export function packCurrentCostCents(tx: DbLike, packId: number): number {
   );
 }
 
-export function listPacks(tx: DbLike, options: { includeInactive?: boolean } = {}): PackRow[] {
+export function listPacks(
+  tx: DbLike,
+  options: { includeInactive?: boolean; query?: string | null } = {},
+): PackRow[] {
+  const conditions: SQL[] = [];
+  if (!options.includeInactive) conditions.push(eq(packs.status, 'active'));
+  const term = options.query?.trim();
+  if (term) {
+    const pattern = `%${term.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
+    const match = or(
+      like(packs.name, pattern),
+      like(packs.internalCode, pattern),
+      like(packs.barcodeValue, pattern),
+    );
+    if (match) conditions.push(match);
+  }
   const query = tx.select().from(packs);
-  const rows = options.includeInactive
-    ? query.all()
-    : query.where(eq(packs.status, 'active')).all();
-  return rows;
+  return conditions.length ? query.where(and(...conditions)).all() : query.all();
 }

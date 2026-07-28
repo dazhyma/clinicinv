@@ -6,6 +6,7 @@ import type { ItemView } from '@/actions/items';
 import type { PackView } from '@/actions/packs';
 import { formatCents } from '@/domain/money';
 import { PHOTO_ACCEPT_ATTRIBUTE } from '@/photos/shared';
+import { useUnsavedChanges } from '../../_components/use-unsaved-changes';
 import type { FormState } from '../actions';
 import { ErrorBanner, Field, SubmitButton } from './form-field';
 import { ItemPhoto } from '../../_components/item-photo';
@@ -53,7 +54,9 @@ export function PackForm({
   pack?: PackView;
 }) {
   const [state, formAction] = useActionState(action, initialState);
+  const [dirty, setDirty] = useState(false);
   const fieldErrors = state.fieldErrors ?? {};
+  useUnsavedChanges(dirty && !state.ok);
 
   const [rows, setRows] = useState<CompositionRow[]>(() =>
     pack && pack.components.length > 0
@@ -85,7 +88,12 @@ export function PackForm({
   }
 
   return (
-    <form action={formAction} className="flex flex-col gap-6" encType="multipart/form-data">
+    <form
+      action={formAction}
+      onChangeCapture={() => setDirty(true)}
+      className="flex flex-col gap-6"
+      encType="multipart/form-data"
+    >
       {pack ? <input type="hidden" name="packId" value={pack.id} /> : null}
 
       <ErrorBanner message={state.error} />

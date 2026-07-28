@@ -53,6 +53,7 @@ export interface CountLineView {
 
 export interface InventoryCountStateView {
   id: number;
+  internalCode: string;
   status: InventoryCountStatus;
   createdAtMs: number;
   updatedAtMs: number;
@@ -69,6 +70,9 @@ export interface CountScanTargetView {
   itemId: number;
   name: string;
   internalCode: string;
+  sku: string | null;
+  referenceNumber: string | null;
+  photoUrl: string | null;
   unitOfMeasurement: string;
   /** §5.10, шаг 4: система показывает ожидаемое количество. */
   expectedQuantity: number;
@@ -90,9 +94,9 @@ function toLineView(line: InventoryCountLineRow, item: ItemRow | undefined): Cou
   return {
     id: line.id,
     itemId: line.itemId,
-    name: item?.name ?? `Item #${line.itemId}`,
-    internalCode: item?.internalCode ?? '',
-    unitOfMeasurement: item?.unitOfMeasurement ?? '',
+    name: line.itemNameSnapshot ?? item?.name ?? `Item #${line.itemId}`,
+    internalCode: line.internalCodeSnapshot ?? item?.internalCode ?? '',
+    unitOfMeasurement: line.unitOfMeasurementSnapshot ?? item?.unitOfMeasurement ?? '',
     expectedQuantity: line.expectedQuantity,
     countedQuantity: line.countedQuantity,
     difference: line.difference,
@@ -108,6 +112,7 @@ function toStateView(db: AppDatabase, countId: number): InventoryCountStateView 
 
   return {
     id: count.id,
+    internalCode: count.internalCode ?? `INV-${String(count.id).padStart(6, '0')}`,
     status: count.status,
     createdAtMs: count.createdAt.getTime(),
     updatedAtMs: count.updatedAt.getTime(),
@@ -161,7 +166,16 @@ export function startInventoryCountAction(
     // позиции остались бы в невидимом черновике и молча пропали.
     const existing = findDraftInventoryCount(db);
     if (existing) return toStateView(db, existing.id);
-    return toStateView(db, startInventoryCount(db, actor).id);
+    try {
+      return toStateView(db, startInventoryCount(db, actor).id);
+    } catch (error) {
+      // Два почти одновременных нажатия могут оба пройти первое чтение.
+      // Частичный UNIQUE оставляет один черновик; проигравший запрос открывает
+      // уже созданный общий count вместо неясной ошибки ограничения БД.
+      const concurrent = findDraftInventoryCount(db);
+      if (concurrent) return toStateView(db, concurrent.id);
+      throw error;
+    }
   });
 }
 
@@ -191,6 +205,9 @@ function openCountItem(
     itemId: item.id,
     name: item.name,
     internalCode: item.internalCode,
+    sku: item.sku,
+    referenceNumber: item.referenceNumber,
+    photoUrl: item.photoUrl,
     unitOfMeasurement: item.unitOfMeasurement,
     expectedQuantity: item.currentQuantity,
     countedQuantity: existing?.countedQuantity ?? null,

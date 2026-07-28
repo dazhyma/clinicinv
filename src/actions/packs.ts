@@ -147,12 +147,12 @@ export interface PackListResult {
 export function listPacksForActor(
   db: AppDatabase,
   actor: Actor,
-  query: { includeInactive?: boolean } = {},
+  query: { includeInactive?: boolean; q?: string } = {},
 ): PackListResult {
   const showCost = canSeeCost(db, actor);
   const includeInactive = Boolean(query.includeInactive) && isAdmin(actor);
 
-  const rows = listPacks(db, { includeInactive });
+  const rows = listPacks(db, { includeInactive, query: query.q });
 
   return {
     packs: rows.map((row) => toPackView(row, getPackComposition(db, row.id), { showCost })),

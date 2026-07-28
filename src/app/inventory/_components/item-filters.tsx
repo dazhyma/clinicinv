@@ -43,7 +43,7 @@ export function ItemFilters({
     <form
       ref={formRef}
       method="get"
-      action={withBasePath('/inventory')}
+      action={withBasePath('/inventory/catalog')}
       className="flex flex-col gap-3"
     >
       <div className="flex flex-col gap-3 sm:flex-row">

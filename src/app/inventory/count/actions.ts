@@ -46,10 +46,10 @@ export async function startInventoryCountFormAction(): Promise<void> {
   if ('failure' in auth) redirect('/login');
 
   const result = startInventoryCountAction(getDb(), auth.actor);
-  if (!result.ok) redirect(`/inventory?error=${encodeURIComponent(result.error)}`);
+  if (!result.ok) redirect(`/inventory/count?error=${encodeURIComponent(result.error)}`);
 
   revalidatePath('/inventory/count');
-  redirect('/inventory/count');
+  redirect('/inventory/count/active');
 }
 
 export async function scanForCountServerAction(input: {
@@ -103,6 +103,7 @@ export async function applyInventoryCountServerAction(
   if (result.ok) {
     revalidatePath('/inventory');
     revalidatePath('/inventory/count');
+    revalidatePath('/inventory/count/history');
   }
   return result;
 }

@@ -330,15 +330,27 @@ export const inventoryCounts = sqliteTable(
   'inventory_counts',
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
+    /** Публичный внутренний номер вида INV-000017. */
+    internalCode: text('internal_code'),
     status: text('status', { enum: INVENTORY_COUNT_STATUSES }).notNull().default('draft'),
     notes: text('notes'),
     createdByAccountId: integer('created_by_account_id').references(() => userAccounts.id),
+    createdByRole: text('created_by_role', { enum: USER_ROLES }),
+    completedByAccountId: integer('completed_by_account_id').references(() => userAccounts.id),
+    completedByRole: text('completed_by_role', { enum: USER_ROLES }),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
     appliedAt: integer('applied_at', { mode: 'timestamp_ms' }),
     cancelledAt: integer('cancelled_at', { mode: 'timestamp_ms' }),
   },
-  (t) => [index('ix_inventory_counts_status').on(t.status, t.createdAt)],
+  (t) => [
+    uniqueIndex('ux_inventory_counts_internal_code').on(t.internalCode),
+    uniqueIndex('ux_inventory_counts_single_draft')
+      .on(t.status)
+      .where(sql`${t.status} = 'draft'`),
+    index('ix_inventory_counts_status').on(t.status, t.createdAt),
+    index('ix_inventory_counts_applied_at').on(t.status, t.appliedAt),
+  ],
 );
 
 export const inventoryCountLines = sqliteTable(
@@ -355,6 +367,15 @@ export const inventoryCountLines = sqliteTable(
     countedQuantity: integer('counted_quantity').notNull(),
     difference: integer('difference').notNull(),
     applied: integer('applied', { mode: 'boolean' }).notNull().default(false),
+    itemNameSnapshot: text('item_name_snapshot'),
+    internalCodeSnapshot: text('internal_code_snapshot'),
+    skuSnapshot: text('sku_snapshot'),
+    referenceNumberSnapshot: text('reference_number_snapshot'),
+    photoUrlSnapshot: text('photo_url_snapshot'),
+    unitOfMeasurementSnapshot: text('unit_of_measurement_snapshot'),
+    finalQuantity: integer('final_quantity'),
+    updatedByAccountId: integer('updated_by_account_id').references(() => userAccounts.id),
+    updatedByRole: text('updated_by_role', { enum: USER_ROLES }),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
@@ -421,6 +442,29 @@ export const auditLog = sqliteTable(
   ],
 );
 
+// --- Структурированная история изменений Item -------------------------------
+
+export const itemHistoryEvents = sqliteTable(
+  'item_history_events',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    itemId: integer('item_id')
+      .notNull()
+      .references(() => items.id),
+    eventType: text('event_type').notNull(),
+    fieldName: text('field_name'),
+    oldValue: text('old_value'),
+    newValue: text('new_value'),
+    actorAccountId: integer('actor_account_id').references(() => userAccounts.id),
+    actorRole: text('actor_role', { enum: USER_ROLES }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    index('ix_item_history_events_item_created').on(t.itemId, t.createdAt),
+    index('ix_item_history_events_type_created').on(t.eventType, t.createdAt),
+  ],
+);
+
 /** Полный набор таблиц — используется в tests/schema.test.ts для сверки с БД. */
 export const allTables = {
   userAccounts,
@@ -439,6 +483,7 @@ export const allTables = {
   inventoryMovements,
   systemSettings,
   auditLog,
+  itemHistoryEvents,
 };
 
 export const NOW = sql`(CAST(strftime('%s', 'now') AS INTEGER) * 1000)`;
@@ -453,4 +498,5 @@ export type UserAccountRow = typeof userAccounts.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type InventoryCountRow = typeof inventoryCounts.$inferSelect;
 export type InventoryCountLineRow = typeof inventoryCountLines.$inferSelect;
+export type ItemHistoryEventRow = typeof itemHistoryEvents.$inferSelect;
 export type OperationEventRow = typeof operationEvents.$inferSelect;

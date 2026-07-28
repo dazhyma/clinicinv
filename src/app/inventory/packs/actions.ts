@@ -22,6 +22,7 @@ import { toFailure } from '@/actions/result';
 import { requireActor } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import type { Actor } from '@/domain/actor';
+import { errors } from '@/domain/errors';
 import { deletePhotoByUrl, storeItemPhoto } from '@/photos/storage';
 import type { FormState } from '../actions';
 
@@ -80,6 +81,10 @@ export async function createPackFormAction(
 ): Promise<FormState> {
   const auth = await actorOrState();
   if ('state' in auth) return auth.state;
+  if (auth.actor.role !== 'Admin') {
+    const failure = toFailure(errors.forbidden('create pack'));
+    return { ok: false, error: failure.error, fieldErrors: failure.fieldErrors };
+  }
 
   let photoUrl: string | null | undefined;
   try {
@@ -112,6 +117,10 @@ export async function updatePackFormAction(
 ): Promise<FormState> {
   const auth = await actorOrState();
   if ('state' in auth) return auth.state;
+  if (auth.actor.role !== 'Admin') {
+    const failure = toFailure(errors.forbidden('edit pack'));
+    return { ok: false, error: failure.error, fieldErrors: failure.fieldErrors };
+  }
 
   const packId = Number(text(formData, 'packId'));
   if (!Number.isSafeInteger(packId) || packId <= 0) {

@@ -22,8 +22,8 @@ export default async function NewItemPage() {
       <AppHeader
         title="Add New Item"
         subtitle="The barcode uses SKU when provided; otherwise it uses an automatically generated internal code."
-        backHref="/inventory"
-        backLabel="Inventory"
+        backHref="/inventory/catalog"
+        backLabel="Items & Packs"
         account={{ username: account.username, role: account.role }}
       />
       <ItemForm mode="create" action={createItemFormAction} options={options} />

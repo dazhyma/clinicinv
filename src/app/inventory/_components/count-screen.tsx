@@ -22,6 +22,8 @@ import {
   selectItemForCountServerAction,
 } from '../count/actions';
 import { CountManualSearchDialog } from './count-manual-search';
+import { useUnsavedChanges } from '../../_components/use-unsaved-changes';
+import { ItemPhoto } from '../../_components/item-photo';
 
 /**
  * Экран инвентаризации (§5.10).
@@ -62,6 +64,10 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
   const scannerRef = useRef<BarcodeCaptureHandle>(null);
   const quantityRef = useRef<HTMLInputElement>(null);
   const returnToCameraRef = useRef(false);
+  const hasUnsavedQuantity =
+    target !== null &&
+    countedInput !== (target.countedQuantity == null ? '' : String(target.countedQuantity));
+  useUnsavedChanges(hasUnsavedQuantity);
 
   // --- Шаг 2: скан предмета -------------------------------------------------
 
@@ -178,7 +184,7 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
         setConfirmOpen(false);
         return;
       }
-      router.push(`/inventory?count=${encodeURIComponent(result.data.message)}`);
+      router.push(`/inventory/count/history/${state.id}`);
     } catch {
       setFeedback({
         tone: 'error',
@@ -198,7 +204,7 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
         setFeedback({ tone: 'error', text: result.error });
         return;
       }
-      router.push('/inventory');
+      router.push('/inventory/count');
     } finally {
       setBusy(false);
     }
@@ -244,8 +250,20 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
       {/* --- Шаги 3–5: найденное количество, ожидаемое, разница --- */}
       {target ? (
         <section className="rounded-2xl border-2 border-slate-900 bg-white p-4">
-          <p className="text-xl font-semibold">{target.name}</p>
-          <p className="font-mono text-base text-slate-600">{target.internalCode}</p>
+          <div className="flex items-center gap-4">
+            <ItemPhoto photoUrl={target.photoUrl} name={target.name} size={72} />
+            <div className="min-w-0">
+              <p className="text-xl font-semibold">{target.name}</p>
+              <p className="font-mono text-base text-slate-600">{target.internalCode}</p>
+              {target.sku || target.referenceNumber ? (
+                <p className="text-sm text-slate-600">
+                  {[target.sku ? `SKU ${target.sku}` : null, target.referenceNumber ? `Ref ${target.referenceNumber}` : null]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </p>
+              ) : null}
+            </div>
+          </div>
 
           <div className="mt-3 flex flex-wrap items-end gap-4">
             <div>
@@ -373,7 +391,7 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
           onClick={() => setConfirmOpen(true)}
           className="w-full rounded-xl bg-slate-900 px-6 py-5 text-2xl font-bold text-white disabled:opacity-50"
         >
-          Apply Corrections
+          Finish Inventory Count
         </button>
         <p className="mt-2 text-base text-slate-600">
           {state.differenceCount === 0
@@ -396,16 +414,12 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
           <div
             role="dialog"
             aria-modal="true"
-            aria-label="Apply inventory corrections?"
+            aria-label="Finish this inventory count?"
             className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl"
           >
-            <h2 className="text-2xl font-semibold">Apply inventory corrections?</h2>
+            <h2 className="text-2xl font-semibold">Finish this inventory count?</h2>
             <p className="mt-3 text-lg text-slate-700">
-              {state.differenceCount === 0
-                ? 'No quantities will change.'
-                : `Stock will be corrected for ${state.differenceCount} ${
-                    state.differenceCount === 1 ? 'item' : 'items'
-                  }. Each correction is recorded as an inventory movement and can be reviewed later.`}
+              Inventory quantities will be updated based on the entered counts.
             </p>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
               <button
@@ -422,7 +436,7 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
                 onClick={() => void confirmApply()}
                 className="rounded-xl bg-slate-900 px-6 py-4 text-lg font-semibold text-white disabled:opacity-60"
               >
-                {busy ? 'Applying…' : 'Apply Corrections'}
+                {busy ? 'Finishing…' : 'Finish Inventory Count'}
               </button>
             </div>
           </div>

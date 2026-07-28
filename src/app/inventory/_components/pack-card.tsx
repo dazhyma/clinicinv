@@ -23,7 +23,12 @@ export function PackCard({ pack, canEdit }: { pack: PackView; canEdit: boolean }
 
       <div className="min-w-56 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xl font-semibold">{pack.name}</span>
+          <Link
+            href={`/inventory/packs/${pack.id}`}
+            className="text-xl font-semibold underline-offset-4 hover:underline"
+          >
+            {pack.name}
+          </Link>
           {pack.status === 'inactive' ? (
             <span className="rounded-full bg-slate-200 px-3 py-1 text-sm font-semibold text-slate-700">
               Inactive
@@ -66,6 +71,12 @@ export function PackCard({ pack, canEdit }: { pack: PackView; canEdit: boolean }
       </div>
 
       <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+        <Link
+          href={`/inventory/packs/${pack.id}`}
+          className="flex-1 rounded-xl border border-slate-300 px-5 py-3 text-center text-lg font-medium sm:flex-none"
+        >
+          View
+        </Link>
         {canEdit ? (
           <Link
             href={`/inventory/packs/${pack.id}/edit`}

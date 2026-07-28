@@ -38,8 +38,8 @@ export default async function EditItemPage({ params }: { params: Promise<{ id: s
       <AppHeader
         title={item.name}
         subtitle="Editing an item never changes finished operations."
-        backHref="/inventory"
-        backLabel="Inventory"
+        backHref={`/inventory/items/${item.id}`}
+        backLabel="Item Details"
         account={{ username: account.username, role: account.role }}
       />
       <ItemForm

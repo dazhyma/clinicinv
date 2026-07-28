@@ -5,7 +5,7 @@
  * инвентаризация переживала обновление страницы. `expected_quantity` — снимок
  * на момент ввода строки: параллельно идущая операция иначе исказит разницу.
  */
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import type { AppDatabase, DbLike } from '@/db/client';
 import {
   inventoryCountLines,
@@ -26,18 +26,28 @@ export function startInventoryCount(
   notes?: string | null,
 ): InventoryCountRow {
   assertInventoryWorker(actor, 'start inventory count');
-  const now = new Date();
-  return db
-    .insert(inventoryCounts)
-    .values({
-      status: 'draft',
-      notes: notes?.trim() || null,
-      createdByAccountId: actor.accountId,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .returning()
-    .get();
+  return runInTransaction(db, (tx) => {
+    const now = new Date();
+    const created = tx
+      .insert(inventoryCounts)
+      .values({
+        status: 'draft',
+        notes: notes?.trim() || null,
+        createdByAccountId: actor.accountId,
+        createdByRole: actor.role,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning()
+      .get();
+
+    return tx
+      .update(inventoryCounts)
+      .set({ internalCode: `INV-${String(created.id).padStart(6, '0')}` })
+      .where(eq(inventoryCounts.id, created.id))
+      .returning()
+      .get();
+  });
 }
 
 export function getInventoryCount(tx: DbLike, countId: number): InventoryCountRow | undefined {
@@ -51,6 +61,36 @@ export function listCountLines(tx: DbLike, countId: number): InventoryCountLineR
     .where(eq(inventoryCountLines.countId, countId))
     .orderBy(inventoryCountLines.id)
     .all();
+}
+
+export interface CompletedInventoryCountSummary {
+  count: InventoryCountRow;
+  countedItems: number;
+  differenceCount: number;
+}
+
+export function listCompletedInventoryCounts(tx: DbLike): CompletedInventoryCountSummary[] {
+  return tx
+    .select({
+      count: inventoryCounts,
+      countedItems: sql<number>`count(${inventoryCountLines.id})`,
+      differenceCount: sql<number>`coalesce(sum(case when ${inventoryCountLines.difference} <> 0 then 1 else 0 end), 0)`,
+    })
+    .from(inventoryCounts)
+    .leftJoin(inventoryCountLines, eq(inventoryCountLines.countId, inventoryCounts.id))
+    .where(eq(inventoryCounts.status, 'applied'))
+    .groupBy(inventoryCounts.id)
+    .orderBy(desc(inventoryCounts.appliedAt), desc(inventoryCounts.id))
+    .all();
+}
+
+export function getCompletedInventoryCount(
+  tx: DbLike,
+  countId: number,
+): { count: InventoryCountRow; lines: InventoryCountLineRow[] } | undefined {
+  const count = getInventoryCount(tx, countId);
+  if (!count || count.status !== 'applied') return undefined;
+  return { count, lines: listCountLines(tx, count.id) };
 }
 
 /** Последний незакрытый черновик — то, что предлагается продолжить после refresh. */
@@ -112,6 +152,14 @@ export function upsertCountLine(
           expectedQuantity: expected,
           countedQuantity: input.countedQuantity,
           difference,
+          itemNameSnapshot: item.name,
+          internalCodeSnapshot: item.internalCode,
+          skuSnapshot: item.sku,
+          referenceNumberSnapshot: item.referenceNumber,
+          photoUrlSnapshot: item.photoUrl,
+          unitOfMeasurementSnapshot: item.unitOfMeasurement,
+          updatedByAccountId: actor.accountId,
+          updatedByRole: actor.role,
           updatedAt: now,
         })
         .where(eq(inventoryCountLines.id, existing.id))
@@ -133,6 +181,14 @@ export function upsertCountLine(
         countedQuantity: input.countedQuantity,
         difference,
         applied: false,
+        itemNameSnapshot: item.name,
+        internalCodeSnapshot: item.internalCode,
+        skuSnapshot: item.sku,
+        referenceNumberSnapshot: item.referenceNumber,
+        photoUrlSnapshot: item.photoUrl,
+        unitOfMeasurementSnapshot: item.unitOfMeasurement,
+        updatedByAccountId: actor.accountId,
+        updatedByRole: actor.role,
         createdAt: now,
         updatedAt: now,
       })
@@ -171,9 +227,15 @@ export function applyInventoryCount(
     const now = new Date();
 
     for (const line of lines) {
-      if (line.difference === 0) {
+      const currentItem = tx.select().from(items).where(eq(items.id, line.itemId)).get();
+      if (!currentItem) throw errors.itemNotFound(line.itemId);
+      // Между подсчётом строки и Finish могли пройти операции или поставки.
+      // Коррекция приводит актуальный остаток ТОЧНО к введённому Actual.
+      const currentDifference = line.countedQuantity - currentItem.currentQuantity;
+
+      if (currentDifference === 0) {
         tx.update(inventoryCountLines)
-          .set({ applied: true, updatedAt: now })
+          .set({ applied: true, finalQuantity: line.countedQuantity, updatedAt: now })
           .where(eq(inventoryCountLines.id, line.id))
           .run();
         continue;
@@ -182,7 +244,7 @@ export function applyInventoryCount(
       const movement = applyMovement(tx, {
         itemId: line.itemId,
         movementType: 'count_correction',
-        quantityDelta: line.difference,
+        quantityDelta: currentDifference,
         inventoryCountId: countId,
         idempotencyKey: idempotencyKeys.countCorrection(countId, line.itemId),
         reason: 'inventory correction',
@@ -190,20 +252,26 @@ export function applyInventoryCount(
       });
 
       tx.update(inventoryCountLines)
-        .set({ applied: true, updatedAt: now })
+        .set({ applied: true, finalQuantity: movement.quantityAfter, updatedAt: now })
         .where(eq(inventoryCountLines.id, line.id))
         .run();
 
       corrections.push({
         itemId: line.itemId,
-        delta: movement.created ? line.difference : 0,
+        delta: movement.created ? currentDifference : 0,
         quantityAfter: movement.quantityAfter,
       });
     }
 
     const applied = tx
       .update(inventoryCounts)
-      .set({ status: 'applied', appliedAt: now, updatedAt: now })
+      .set({
+        status: 'applied',
+        appliedAt: now,
+        completedByAccountId: actor.accountId,
+        completedByRole: actor.role,
+        updatedAt: now,
+      })
       .where(eq(inventoryCounts.id, countId))
       .returning()
       .get();

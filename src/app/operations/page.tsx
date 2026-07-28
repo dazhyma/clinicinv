@@ -65,110 +65,118 @@ export default async function OperationsPage({
         </p>
       ) : null}
 
-      {/* --- §8.3: блок возобновления --- */}
-      {result.active.length > 0 ? (
-        <section className="mb-5 rounded-2xl border-2 border-emerald-500 bg-white p-4">
-          <h2 className="mb-3 text-xl font-semibold">
-            {result.active.length === 1
-              ? 'Active operation found'
-              : `${result.active.length} active operations found`}
-          </h2>
-          <ul className="flex flex-col gap-3">
-            {result.active.map((operation) => (
-              <li
-                key={operation.id}
-                className="flex flex-wrap items-center gap-3 rounded-xl bg-emerald-50 p-3"
-              >
-                <div className="min-w-40 flex-1">
-                  <p className="text-lg">
-                    Case: <span className="font-mono text-2xl font-bold">{operation.caseCode}</span>
-                  </p>
-                  <p className="text-lg text-slate-700">
-                    {operation.unitCount} items scanned · {operation.itemCount} unique
-                  </p>
-                  <p className="text-base text-slate-600">
-                    Started {formatDateTime(operation.createdAtMs)}
-                  </p>
-                </div>
-                <Link
-                  href={`/operations/${operation.id}`}
-                  className="rounded-xl bg-slate-900 px-6 py-4 text-lg font-semibold text-white"
+      <section className="mb-6 rounded-2xl border-2 border-emerald-500 bg-emerald-50/40 p-4">
+        <h2 className="mb-4 text-2xl font-bold">Current Operations</h2>
+
+        {/* --- §8.3: блок возобновления --- */}
+        {result.active.length > 0 ? (
+          <div className="mb-5 rounded-2xl bg-white p-4 ring-1 ring-emerald-300">
+            <h2 className="mb-3 text-xl font-semibold">
+              {result.active.length === 1
+                ? 'Active operation found'
+                : `${result.active.length} active operations found`}
+            </h2>
+            <ul className="flex flex-col gap-3">
+              {result.active.map((operation) => (
+                <li
+                  key={operation.id}
+                  className="flex flex-wrap items-center gap-3 rounded-xl bg-emerald-50 p-3"
                 >
-                  Resume Operation
-                </Link>
-                {operation.canVoid ? (
-                  <VoidOperationButton operationId={operation.id} caseCode={operation.caseCode} />
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+                  <div className="min-w-40 flex-1">
+                    <p className="text-lg">
+                      Case:{' '}
+                      <span className="font-mono text-2xl font-bold">{operation.caseCode}</span>
+                    </p>
+                    <p className="text-lg text-slate-700">
+                      {operation.unitCount} items scanned · {operation.itemCount} unique
+                    </p>
+                    <p className="text-base text-slate-600">
+                      Started {formatDateTime(operation.createdAtMs)}
+                    </p>
+                  </div>
+                  <Link
+                    href={`/operations/${operation.id}`}
+                    className="rounded-xl bg-slate-900 px-6 py-4 text-lg font-semibold text-white"
+                  >
+                    Resume Operation
+                  </Link>
+                  {operation.canVoid ? (
+                    <VoidOperationButton operationId={operation.id} caseCode={operation.caseCode} />
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
 
-      {/* --- §7.3: Start New Operation --- */}
-      <form action={startOperationFormAction} className="mb-5">
-        <button
-          type="submit"
-          className="w-full rounded-2xl bg-slate-900 px-6 py-5 text-2xl font-bold text-white sm:w-auto sm:px-10"
-        >
-          {result.active.length > 0 ? 'Start Another Operation' : 'Start New Operation'}
-        </button>
-      </form>
-
-      {/* --- §7.2: поиск и фильтры --- */}
-      <form method="get" className="mb-5 flex flex-wrap items-end gap-3">
-        <div className="min-w-52 flex-1">
-          <label htmlFor="q" className="text-base font-medium">
-            Search by case code
-          </label>
-          <input
-            id="q"
-            name="q"
-            type="search"
-            defaultValue={query.q}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 text-lg"
-          />
-        </div>
-        <div>
-          <label htmlFor="status" className="text-base font-medium">
-            Status
-          </label>
-          <select
-            id="status"
-            name="status"
-            defaultValue={query.status}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 text-lg"
+        {/* --- §7.3: Start New Operation --- */}
+        <form action={startOperationFormAction}>
+          <button
+            type="submit"
+            className="w-full rounded-2xl bg-slate-900 px-6 py-5 text-2xl font-bold text-white sm:w-auto sm:px-10"
           >
-            <option value="all">All</option>
-            <option value="Active">Active</option>
-            <option value="Finished">Finished</option>
-            {result.canSeeVoided ? <option value="Voided">Voided</option> : null}
-          </select>
-        </div>
-        <button
-          type="submit"
-          className="rounded-xl border border-slate-300 bg-white px-6 py-3 text-lg font-semibold"
-        >
-          Apply
-        </button>
-      </form>
+            {result.active.length > 0 ? 'Start Another Operation' : 'Start New Operation'}
+          </button>
+        </form>
+      </section>
 
-      <OperationHistory
-        title="Finished operations"
-        operations={result.finished}
-        emptyLabel="No finished operations yet."
-        totalLabel={result.finishedTotalFormatted}
-      />
+      <section className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+        <h2 className="mb-4 text-2xl font-bold">Past Operations</h2>
 
-      {result.canSeeVoided ? (
-        <div className="mt-5">
-          <OperationHistory
-            title="Voided operations"
-            operations={result.voided}
-            emptyLabel="No voided operations."
-          />
-        </div>
-      ) : null}
+        {/* --- §7.2: поиск и фильтры только для истории --- */}
+        <form method="get" className="mb-5 flex flex-wrap items-end gap-3">
+          <div className="min-w-52 flex-1">
+            <label htmlFor="q" className="text-base font-medium">
+              Search by case code
+            </label>
+            <input
+              id="q"
+              name="q"
+              type="search"
+              defaultValue={query.q}
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 text-lg"
+            />
+          </div>
+          <div>
+            <label htmlFor="status" className="text-base font-medium">
+              Status
+            </label>
+            <select
+              id="status"
+              name="status"
+              defaultValue={query.status}
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 text-lg"
+            >
+              <option value="all">All</option>
+              <option value="Finished">Finished</option>
+              {result.canSeeVoided ? <option value="Voided">Voided</option> : null}
+            </select>
+          </div>
+          <button
+            type="submit"
+            className="rounded-xl border border-slate-300 bg-white px-6 py-3 text-lg font-semibold"
+          >
+            Apply
+          </button>
+        </form>
+
+        <OperationHistory
+          title="Finished operations"
+          operations={result.finished}
+          emptyLabel="No finished operations yet."
+          totalLabel={result.finishedTotalFormatted}
+        />
+
+        {result.canSeeVoided ? (
+          <div className="mt-5">
+            <OperationHistory
+              title="Voided operations"
+              operations={result.voided}
+              emptyLabel="No voided operations."
+            />
+          </div>
+        ) : null}
+      </section>
     </main>
   );
 }

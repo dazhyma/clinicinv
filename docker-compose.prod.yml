@@ -43,8 +43,10 @@ services:
       COOKIE_SECURE: 'true'
       NODE_ENV: production
     volumes:
-      # База SQLite (+ WAL) и загруженные фотографии предметов.
-      - clinic-data:/app/data
+      # Явный host bind вместо project-scoped named volume: каталог данных
+      # остаётся тем же при смене каталога/имени Compose-проекта во время деплоя.
+      # Путь можно переопределить для другого сервера через CLINIC_DATA_DIR.
+      - ${CLINIC_DATA_DIR:-/opt/clinic/data}:/app/data
     networks:
       - watchtogether_default
     logging:
@@ -52,9 +54,6 @@ services:
       options:
         max-size: '10m'
         max-file: '5'
-
-volumes:
-  clinic-data:
 
 networks:
   watchtogether_default:

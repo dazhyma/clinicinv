@@ -1,0 +1,61 @@
+# Развёртывание на сервере: https://dazhyma.tech/clinic
+#
+# Порты наружу не публикуются НАМЕРЕННО (§15, NFR-18): единственный вход —
+# Caddy из проекта /opt/watchtogether, он ходит к нам по имени сервиса внутри
+# общей docker-сети. Открытый порт на хосте означал бы доступ к системе учёта
+# по http:// в обход HTTPS и в обход правил домена.
+#
+# Запуск:
+#   docker compose -f docker-compose.prod.yml up -d --build
+# Первичное заведение двух общих аккаунтов (§2.3) — отдельной командой:
+#   docker compose -f docker-compose.prod.yml run --rm clinic-app npm run db:seed
+# Резервная копия (§15, NFR-16, D-47):
+#   docker compose -f docker-compose.prod.yml exec clinic-app npm run db:backup
+#
+# Со стороны Caddy (Caddyfile проекта watchtogether), внутри блока dazhyma.tech:
+#
+#   handle /clinic* {
+#       reverse_proxy clinic-app:3000
+#   }
+#
+# Именно `handle`, а НЕ `handle_path`: `handle_path` срезает /clinic из пути,
+# а приложение собрано с basePath=/clinic и ждёт префикс целиком — со срезанным
+# путём оно ответит 404 на каждую страницу и на каждый файл /clinic/_next/*.
+
+services:
+  clinic-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: clinic-inventory:latest
+    container_name: clinic-app
+    restart: unless-stopped
+    # Файл .env лежит рядом на сервере и в репозиторий не коммитится (§15).
+    # Образец переменных — .env.example.
+    env_file:
+      - .env
+    environment:
+      # Пути внутри контейнера фиксированы: том смонтирован в /app/data.
+      DATABASE_FILE: /app/data/clinic.db
+      UPLOADS_DIR: /app/data/uploads
+      BACKUP_DIR: /app/data/backups
+      # Система работает только за HTTPS — cookie сессии без Secure не выдаётся.
+      COOKIE_SECURE: 'true'
+      NODE_ENV: production
+    volumes:
+      # База SQLite (+ WAL) и загруженные фотографии предметов.
+      - clinic-data:/app/data
+    networks:
+      - watchtogether_default
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+
+volumes:
+  clinic-data:
+
+networks:
+  watchtogether_default:
+    external: true

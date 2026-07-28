@@ -193,3 +193,62 @@ npm run db:backup -- /Volumes/usb/clinic.db  # копия в заданный ф
 
 **HTTPS (§15, NFR-11).** Обеспечивается развёртыванием (обратный прокси).
 В продакшене обязательно `COOKIE_SECURE=true`.
+
+### Развёртывание в Docker (`https://dazhyma.tech/clinic`)
+
+Приложение доступно **только** под префиксом `/clinic` — корень домена занят
+другим проектом. Префикс зашит в сборку (`basePath` в `next.config.ts`,
+константа `src/base-path.ts`, D-51) и переменной окружения не меняется: смена
+адреса размещения = пересборка образа.
+
+**Файлы.** `Dockerfile`, `.dockerignore`, `docker-entrypoint.sh`,
+`docker-compose.prod.yml`.
+
+**Первый запуск на сервере.**
+
+```bash
+cd /opt/clinic
+cp .env.example .env                       # заполнить пароли сида; .env в git не идёт
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml run --rm clinic-app npm run db:seed
+```
+
+Миграции применяются автоматически при старте контейнера (entrypoint), **до**
+запуска сервера. Сид двух общих аккаунтов (§2.3) — отдельная команда: молча
+пересоздавать учётные записи клиники на каждом рестарте нельзя.
+
+**Caddy** (`/opt/watchtogether`, контейнер `watchtogether-caddy-1`, сеть
+`watchtogether_default`), внутри блока `dazhyma.tech`:
+
+```
+handle /clinic* {
+    reverse_proxy clinic-app:3000
+}
+```
+
+Именно `handle`, а не `handle_path`: `handle_path` срезает `/clinic` из пути, а
+приложение ждёт префикс целиком — со срезанным путём каждая страница и каждый
+файл `/clinic/_next/*` вернут 404.
+
+Портов наружу контейнер не публикует: единственный вход — Caddy (§15, NFR-18).
+
+**Данные** лежат в томе `clinic-data`, смонтированном в `/app/data`: база
+SQLite (`clinic.db` + WAL), фотографии (`uploads/`), резервные копии
+(`backups/`). Бэкап из контейнера:
+
+```bash
+docker compose -f docker-compose.prod.yml exec clinic-app npm run db:backup
+```
+
+**Обновление.**
+
+```bash
+docker compose -f docker-compose.prod.yml exec clinic-app npm run db:backup
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+**Заголовки безопасности.** `Strict-Transport-Security` выдаётся из
+`next.config.ts`, `Content-Security-Policy` — из `src/middleware.ts` с
+одноразовым nonce на каждый запрос (D-53). Если Caddy добавляет собственные
+заголовки безопасности, их следует убрать для `/clinic*`: два разных CSP на
+одном ответе применяются пересечением и с большой вероятностью сломают гидрацию.

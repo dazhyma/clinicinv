@@ -11,6 +11,7 @@
  */
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { and, eq, gt, isNull, lt, or } from 'drizzle-orm';
+import { BASE_PATH } from '@/base-path';
 import type { AppDatabase } from '@/db/client';
 import { sessions, userAccounts, type UserAccountRow } from '@/db/schema';
 import { env } from '@/env';
@@ -141,13 +142,19 @@ export function purgeExpiredSessions(db: AppDatabase): number {
   return result.changes;
 }
 
-/** Параметры cookie сессии (§15, NFR-13). */
+/**
+ * Параметры cookie сессии (§15, NFR-13).
+ *
+ * `path` — префикс развёртывания (D-51), а не `/`: на домене живут соседние
+ * приложения, и cookie с `path=/` уходила бы в каждый их запрос. Это и утечка
+ * токена сессии клиники за пределы клиники, и риск конфликта имён cookie.
+ */
 export function sessionCookieOptions(expiresAt: Date) {
   return {
     httpOnly: true,
     sameSite: 'lax' as const,
     secure: env.cookieSecure,
-    path: '/',
+    path: BASE_PATH || '/',
     expires: expiresAt,
   };
 }

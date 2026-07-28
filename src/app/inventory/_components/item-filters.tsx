@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef } from 'react';
+import { withBasePath } from '@/base-path';
 
 /**
  * Поиск и фильтры списка предметов (§5.3).
@@ -37,7 +38,14 @@ export function ItemFilters({
     'min-h-12 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base';
 
   return (
-    <form ref={formRef} method="get" action="/inventory" className="flex flex-col gap-3">
+    // Обычная GET-форма: атрибут action отправляет браузер, Next префикс сюда
+    // не подставляет — его дописывает withBasePath (D-51).
+    <form
+      ref={formRef}
+      method="get"
+      action={withBasePath('/inventory')}
+      className="flex flex-col gap-3"
+    >
       <div className="flex flex-col gap-3 sm:flex-row">
         <div className="flex-1">
           <label htmlFor="q" className="sr-only">

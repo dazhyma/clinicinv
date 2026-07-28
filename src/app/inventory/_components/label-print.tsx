@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import { withBasePath } from '@/base-path';
 import {
   LABEL_SIZES,
   MAX_LABEL_COPIES,
@@ -46,7 +47,9 @@ export function LabelPrintView({
   const [sizeId, setSizeId] = useState<string>(DEFAULT_LABEL_SIZE_ID);
   const size = labelSizeById(sizeId);
 
-  const downloadBase = `/api/barcode/${encodeURIComponent(code)}`;
+  // Обычный <a href> на route handler: Next дописывает префикс только в
+  // next/link и router.push, здесь это делаем мы (D-51).
+  const downloadBase = withBasePath(`/api/barcode/${encodeURIComponent(code)}`);
 
   return (
     <>

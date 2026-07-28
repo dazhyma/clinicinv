@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { listItemsForActor } from '@/actions/items';
+import { withBasePath } from '@/base-path';
 import { requirePageAdmin } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import { AppHeader } from '../../_components/app-header';
@@ -37,7 +38,12 @@ export default async function ReceiveStockPickerPage({
         account={account}
       />
 
-      <form method="get" action="/inventory/receive" className="mb-5 flex flex-col gap-3 sm:flex-row">
+      {/* Атрибут action обычной GET-формы Next префиксом не дополняет (D-51). */}
+      <form
+        method="get"
+        action={withBasePath('/inventory/receive')}
+        className="mb-5 flex flex-col gap-3 sm:flex-row"
+      >
         <label htmlFor="q" className="sr-only">
           Scan a barcode or search by name, internal code, SKU or reference number
         </label>

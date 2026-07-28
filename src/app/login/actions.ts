@@ -2,6 +2,7 @@
 
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { BASE_PATH } from '@/base-path';
 import { getDb } from '@/db/client';
 import { getClientIp } from '@/auth/guards';
 import { login } from '@/auth/login';
@@ -52,6 +53,9 @@ export async function logoutAction(): Promise<void> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
   revokeSession(getDb(), token);
-  cookieStore.delete(SESSION_COOKIE_NAME);
+  // Удалять cookie нужно ТЕМ ЖЕ path, каким она поставлена (D-51):
+  // `delete(name)` без path гасит cookie в корне домена, а сессионная лежит
+  // под /clinic — она пережила бы logout, и выход стал бы фикцией.
+  cookieStore.delete({ name: SESSION_COOKIE_NAME, path: BASE_PATH || '/' });
   redirect('/login');
 }

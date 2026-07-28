@@ -1,4 +1,5 @@
 import Image from 'next/image';
+import { withBasePath } from '@/base-path';
 import { thumbnailUrl } from '@/photos/shared';
 
 /**
@@ -10,6 +11,11 @@ import { thumbnailUrl } from '@/photos/shared';
  * `unoptimized` обязателен: оптимизатор Next ходит за картинкой собственным
  * запросом без cookie сессии и получил бы от `/api/photos/[token]` 401 (§15).
  * Уменьшение уже сделано при загрузке через sharp, поэтому оптимизатор не нужен.
+ *
+ * Плата за `unoptimized` — префикс развёртывания приходится дописывать вручную
+ * (D-51): лоадер Next в этом режиме возвращает `src` как есть, и путь
+ * `/api/photos/...` из `items.photo_url` ушёл бы в корень домена, где живёт
+ * чужой проект. Оптимизированный `src` префикс получил бы сам.
  */
 export function ItemPhoto({
   photoUrl,
@@ -44,7 +50,7 @@ export function ItemPhoto({
 
   return (
     <Image
-      src={variant === 'thumb' ? thumbnailUrl(photoUrl) : photoUrl}
+      src={withBasePath(variant === 'thumb' ? thumbnailUrl(photoUrl) : photoUrl)}
       alt={name}
       width={size}
       height={size}

@@ -57,7 +57,8 @@ export function ItemForm({
             Internal code: <strong className="font-mono">{item.internalCode}</strong>
           </p>
           <p className="mt-1 text-sm text-slate-500">
-            The internal code and its barcode are permanent and cannot be changed here (§5.7).
+            The internal code is permanent. The barcode uses SKU when present, or the internal
+            code when SKU is empty.
           </p>
         </section>
       ) : null}
@@ -103,7 +104,12 @@ export function ItemForm({
       </div>
 
       <div className="grid gap-6 sm:grid-cols-2">
-        <Field name="sku" label="SKU" error={fieldErrors.sku}>
+        <Field
+          name="sku"
+          label="SKU"
+          hint="Optional. When present, this value is encoded in the barcode."
+          error={fieldErrors.sku}
+        >
           {(props) => <input type="text" defaultValue={item?.sku ?? ''} {...props} />}
         </Field>
 

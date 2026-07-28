@@ -15,6 +15,7 @@ import {
   updateItemAction,
 } from '@/actions/items';
 import { updateSettingsAction } from '@/actions/settings';
+import { findBarcodeOwner } from '@/domain/codes';
 import { getItem } from '@/domain/items';
 import { SETTING_KEYS, getNegativeStockMode, setSetting, staffCanSeeCost } from '@/domain/settings';
 import { FIXTURES, makeItem, nextClientEventId, setupTestDb } from './helpers';
@@ -140,6 +141,93 @@ describe('Слой действий: точечные права Staff', () => {
       }),
     );
     expect(getItem(ctx.db, created.data.itemId)!.currentQuantity).toBe(15);
+  });
+});
+
+describe('SKU определяет текущее значение штрихкода', () => {
+  it('использует SKU при создании, а без SKU — автоматический internal code', () => {
+    const ctx = setupTestDb();
+    const withSku = expectSuccess<{ itemId: number; internalCode: string }>(
+      createItemAction(ctx.db, ctx.admin, {
+        name: 'Needle',
+        costPerUnit: '1.25',
+        unitOfMeasurement: 'each',
+        initialQuantity: '0',
+        sku: ' needle-42 ',
+      }),
+    );
+    const automatic = expectSuccess<{ itemId: number; internalCode: string }>(
+      createItemAction(ctx.db, ctx.admin, {
+        name: 'Gauze',
+        costPerUnit: '2.00',
+        unitOfMeasurement: 'each',
+        initialQuantity: '0',
+        sku: '   ',
+      }),
+    );
+
+    expect(getItem(ctx.db, withSku.data.itemId)).toMatchObject({
+      sku: 'needle-42',
+      barcodeValue: 'NEEDLE-42',
+    });
+    expect(getItem(ctx.db, automatic.data.itemId)?.barcodeValue).toBe(
+      automatic.data.internalCode,
+    );
+  });
+
+  it('при Edit синхронизирует штрихкод, сохраняя прежние коды как алиасы', () => {
+    const ctx = setupTestDb();
+    const item = makeItem(ctx, FIXTURES.gauze, { sku: 'OLD-SKU' });
+    const internalCode = item.internalCode;
+
+    expectSuccess(
+      updateItemAction(ctx.db, ctx.admin, item.id, {
+        name: item.name,
+        costPerUnit: '3.00',
+        unitOfMeasurement: 'each',
+        sku: 'new-sku',
+      }),
+    );
+
+    expect(getItem(ctx.db, item.id)).toMatchObject({
+      internalCode,
+      sku: 'new-sku',
+      barcodeValue: 'NEW-SKU',
+    });
+    for (const alias of [internalCode, 'OLD-SKU', 'NEW-SKU']) {
+      expect(findBarcodeOwner(ctx.db, alias)).toMatchObject({
+        ownerType: 'item',
+        ownerId: item.id,
+      });
+    }
+
+    expectSuccess(
+      updateItemAction(ctx.db, ctx.admin, item.id, {
+        name: item.name,
+        costPerUnit: '3.00',
+        unitOfMeasurement: 'each',
+        sku: '',
+      }),
+    );
+    expect(getItem(ctx.db, item.id)?.barcodeValue).toBe(internalCode);
+  });
+
+  it('не позволяет двум объектам использовать один SKU как штрихкод', () => {
+    const ctx = setupTestDb();
+    makeItem(ctx, FIXTURES.gauze, { sku: 'SHARED-SKU' });
+
+    const duplicate = expectFailure(
+      createItemAction(ctx.db, ctx.admin, {
+        name: 'Another item',
+        costPerUnit: '1.00',
+        unitOfMeasurement: 'each',
+        initialQuantity: '0',
+        sku: 'shared-sku',
+      }),
+    );
+
+    expect(duplicate.code).toBe('VALIDATION_FAILED');
+    expect(duplicate.fieldErrors?.sku).toMatch(/already assigned/i);
   });
 });
 
@@ -599,10 +687,10 @@ describe('Поиск и фильтры списка предметов (§5.3, �
   });
 });
 
-// --- §5.5, §5.7, §18.7: код и штрихкод неизменны -----------------------------
+// --- Дополнение заказчика: internal code постоянен, barcode следует за SKU ----
 
-describe('Редактирование не меняет внутренний код и штрихкод (§18.7)', () => {
-  it('после смены названия, стоимости, SKU и reference number код тот же', () => {
+describe('Редактирование сохраняет внутренний код и синхронизирует штрихкод', () => {
+  it('после смены SKU внутренний код тот же, а barcode использует новый SKU', () => {
     const ctx = setupTestDb();
     const item = makeItem(ctx, FIXTURES.gauze, { sku: 'OLD', referenceNumber: 'OLD-REF' });
     const before = getItem(ctx.db, item.id)!;
@@ -619,7 +707,7 @@ describe('Редактирование не меняет внутренний к
 
     const after = getItem(ctx.db, item.id)!;
     expect(after.internalCode).toBe(before.internalCode);
-    expect(after.barcodeValue).toBe(before.barcodeValue);
+    expect(after.barcodeValue).toBe('NEW');
     expect(after.name).toBe('Gauze sterile');
     expect(after.currentUnitCostCents).toBe(425);
     // Остаток формой редактирования не трогается (§10.4).

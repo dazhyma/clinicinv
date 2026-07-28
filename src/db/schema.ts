@@ -133,7 +133,7 @@ export const barcodeRegistry = sqliteTable(
     ownerId: integer('owner_id').notNull(),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   },
-  (t) => [uniqueIndex('ux_barcode_registry_owner').on(t.ownerType, t.ownerId)],
+  (t) => [index('ix_barcode_registry_owner').on(t.ownerType, t.ownerId)],
 );
 
 // --- Item (§17.1) -----------------------------------------------------------
@@ -144,7 +144,7 @@ export const items = sqliteTable(
     id: integer('id').primaryKey({ autoIncrement: true }),
     /** `ITM-000127`. Постоянен, не переиспользуется, не редактируется формой (§5.5, §18.7). */
     internalCode: text('internal_code').notNull(),
-    /** Глобальная уникальность между Item и Pack держится barcodeRegistry. */
+    /** SKU, если он задан; иначе internalCode. Глобальная уникальность — в barcodeRegistry. */
     barcodeValue: text('barcode_value').notNull(),
     name: text('name').notNull(),
     photoUrl: text('photo_url'),

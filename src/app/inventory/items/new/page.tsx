@@ -21,7 +21,7 @@ export default async function NewItemPage() {
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col p-4 sm:p-6">
       <AppHeader
         title="Add New Item"
-        subtitle="A permanent internal code and barcode are generated automatically on save."
+        subtitle="The barcode uses SKU when provided; otherwise it uses an automatically generated internal code."
         backHref="/inventory"
         backLabel="Inventory"
         account={{ username: account.username, role: account.role }}

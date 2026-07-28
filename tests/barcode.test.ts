@@ -17,13 +17,12 @@ function pngSize(buffer: Buffer): { width: number; height: number } {
   return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
 }
 
-describe('Штрихкод генерируется из внутреннего кода (§5.5)', () => {
-  it('этикетка предмета содержит его код и читаемую человеком строку', () => {
+describe('Штрихкод генерируется из SKU либо внутреннего кода', () => {
+  it('без SKU этикетка предмета содержит автоматически созданный код', () => {
     const ctx = setupTestDb();
     const item = makeItem(ctx, FIXTURES.gauze);
 
     expect(item.internalCode).toMatch(/^ITM-\d{6}$/);
-    // §5.5: штрихкод строится из внутреннего кода, а не из SKU производителя.
     expect(item.barcodeValue).toBe(item.internalCode);
 
     const svg = renderLabelSvg(item.barcodeValue);
@@ -37,6 +36,19 @@ describe('Штрихкод генерируется из внутреннего 
     // Графика векторная: ни одного растрового вложения.
     expect(svg).not.toContain('data:image');
     expect(svg).toContain('<path');
+  });
+
+  it('с SKU этикетка кодирует SKU, а internal code остаётся идентификатором', () => {
+    const ctx = setupTestDb();
+    const item = makeItem(ctx, FIXTURES.gauze, { sku: 'gauze-44' });
+
+    expect(item.internalCode).toMatch(/^ITM-\d{6}$/);
+    expect(item.barcodeValue).toBe('GAUZE-44');
+
+    const svg = renderLabelSvg(item.barcodeValue);
+    expect(svg).toContain('>GAUZE-44</text>');
+    expect(svg).toContain('aria-label="Barcode GAUZE-44"');
+    expect(svg).not.toContain(`>${item.internalCode}</text>`);
   });
 
   it('этикетка пака содержит код пака (§6.6)', () => {

@@ -48,8 +48,9 @@ export function ItemCard({ item, canEdit }: { item: ItemView; canEdit: boolean }
         </p>
 
         <p className="mt-1 font-mono text-sm text-slate-500">
-          {item.internalCode}
-          {item.sku ? ` · SKU ${item.sku}` : ''}
+          {item.sku && item.barcodeValue === item.sku.trim().toUpperCase()
+            ? `SKU ${item.sku}`
+            : item.barcodeValue}
           {item.referenceNumber ? ` · Ref ${item.referenceNumber}` : ''}
         </p>
       </div>

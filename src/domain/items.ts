@@ -23,6 +23,39 @@ import { applyMovement, idempotencyKeys, runInTransaction } from './movements';
 import { assertNonNegativeQuantity, assertPositiveQuantity, isValidQuantity } from './quantity';
 import { staffCanSeeCost } from './settings';
 
+function itemBarcodeValue(sku: string | null | undefined, internalCode: string): string {
+  return sku?.trim() ? normalizeScannedCode(sku) : internalCode;
+}
+
+/**
+ * Регистрирует текущее или прежнее значение штрихкода. Старые значения не
+ * удаляются: после смены SKU уже напечатанная этикетка всё ещё должна находить
+ * тот же предмет.
+ */
+function ensureItemBarcodeAlias(
+  tx: DbLike,
+  barcodeValue: string,
+  itemId: number,
+  createdAt: Date,
+): void {
+  const existing = tx
+    .select()
+    .from(barcodeRegistry)
+    .where(eq(barcodeRegistry.barcodeValue, barcodeValue))
+    .get();
+
+  if (existing) {
+    if (existing.ownerType === 'item' && existing.ownerId === itemId) return;
+    throw errors.validationFailed(`Barcode "${barcodeValue}" is already assigned`, {
+      field: 'sku',
+    });
+  }
+
+  tx.insert(barcodeRegistry)
+    .values({ barcodeValue, ownerType: 'item', ownerId: itemId, createdAt })
+    .run();
+}
+
 export interface CreateItemInput {
   name: string;
   /** §5.4: обязательное поле. Целые центы. */
@@ -65,8 +98,22 @@ export function createItem(db: AppDatabase, actor: Actor, input: CreateItemInput
 
   return runInTransaction(db, (tx) => {
     const internalCode = nextInternalCode(tx, ITEM_CODE_PREFIX);
-    const barcodeValue = internalCode;
+    const sku = input.sku?.trim() || null;
+    const barcodeValue = itemBarcodeValue(sku, internalCode);
     const now = new Date();
+
+    if (barcodeValue !== internalCode) {
+      const existingBarcode = tx
+        .select()
+        .from(barcodeRegistry)
+        .where(eq(barcodeRegistry.barcodeValue, barcodeValue))
+        .get();
+      if (existingBarcode) {
+        throw errors.validationFailed(`Barcode "${barcodeValue}" is already assigned`, {
+          field: 'sku',
+        });
+      }
+    }
 
     const created = tx
       .insert(items)
@@ -75,7 +122,7 @@ export function createItem(db: AppDatabase, actor: Actor, input: CreateItemInput
         barcodeValue,
         name,
         photoUrl: input.photoUrl ?? null,
-        sku: input.sku?.trim() || null,
+        sku,
         referenceNumber: input.referenceNumber?.trim() || null,
         currentUnitCostCents: input.currentUnitCostCents,
         unitOfMeasurement,
@@ -91,11 +138,12 @@ export function createItem(db: AppDatabase, actor: Actor, input: CreateItemInput
       .returning()
       .get();
 
-    // Реестр — вторая, независимая от префиксов гарантия того, что один и тот же
-    // штрихкод не достанется двум объектам (§16, §18.5, §18.6).
-    tx.insert(barcodeRegistry)
-      .values({ barcodeValue, ownerType: 'item', ownerId: created.id, createdAt: now })
-      .run();
+    // Internal code остаётся алиасом: если SKU позднее очистят, предмет вернётся
+    // к автоматически созданному значению без потери сканируемости.
+    ensureItemBarcodeAlias(tx, internalCode, created.id, now);
+    if (barcodeValue !== internalCode) {
+      ensureItemBarcodeAlias(tx, barcodeValue, created.id, now);
+    }
 
     let finalRow = created;
     if (input.initialQuantity > 0) {
@@ -126,8 +174,8 @@ export function createItem(db: AppDatabase, actor: Actor, input: CreateItemInput
 
 /**
  * Поля, которые Admin может менять через обычную форму (§5.7).
- * `internal_code` и `barcode_value` в этот тип не входят: §18.7 и §5.7
- * запрещают менять их формой редактирования.
+ * `internal_code` и `barcode_value` в этот тип не входят: пользователь меняет
+ * только SKU, а текущее значение штрихкода синхронизируется доменом.
  */
 export interface UpdateItemPatch {
   name?: string;
@@ -182,13 +230,19 @@ export function updateItem(
   return runInTransaction(db, (tx) => {
     const existing = tx.select().from(items).where(eq(items.id, itemId)).get();
     if (!existing) throw errors.itemNotFound(itemId);
+    const sku = patch.sku !== undefined ? patch.sku?.trim() || null : existing.sku;
+    const barcodeValue = itemBarcodeValue(sku, existing.internalCode);
+
+    if (barcodeValue !== existing.barcodeValue) {
+      ensureItemBarcodeAlias(tx, barcodeValue, existing.id, new Date());
+    }
 
     const updated = tx
       .update(items)
       .set({
         ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
         ...(patch.photoUrl !== undefined ? { photoUrl: patch.photoUrl } : {}),
-        ...(patch.sku !== undefined ? { sku: patch.sku?.trim() || null } : {}),
+        ...(patch.sku !== undefined ? { sku, barcodeValue } : {}),
         ...(patch.referenceNumber !== undefined
           ? { referenceNumber: patch.referenceNumber?.trim() || null }
           : {}),

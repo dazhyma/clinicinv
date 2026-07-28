@@ -14,9 +14,8 @@ export const dynamic = 'force-dynamic';
  * бумагу попадают только этикетки. Управление (копии, размер, Print, скачивание)
  * живёт в блоке `no-print`.
  *
- * Печатается ПОСТОЯННЫЙ внутренний код (§5.5, §18.7): он не меняется при
- * редактировании названия, стоимости, SKU, фотографии или количества, поэтому
- * однажды наклеенная этикетка остаётся верной.
+ * Печатается текущее значение штрихкода: SKU, если он задан, либо постоянный
+ * внутренний код. Прежние значения остаются алиасами и продолжают сканироваться.
  *
  * Доступно обеим ролям: §3.2 не запрещает Staff печатать этикетку, а стоимости
  * на этикетке нет вовсе.
@@ -35,7 +34,7 @@ export default async function ItemBarcodePage({ params }: { params: Promise<{ id
       <LabelPrintView
         kindLabel="Item"
         title={item.name}
-        code={item.internalCode}
+        code={item.barcodeValue}
         labelSvg={renderLabelSvg(item.barcodeValue)}
         backHref="/inventory"
         backLabel="Back to Inventory"

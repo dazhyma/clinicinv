@@ -18,9 +18,16 @@ export const dynamic = 'force-dynamic';
  *
  * Ни то, ни другое не меняет завершённые операции (§5.9, §11.3).
  */
-export default async function ItemStockPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ItemStockPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ returnToScanner?: string }>;
+}) {
   const { account, actor } = await requirePageAdmin();
   const { id } = await params;
+  const { returnToScanner } = await searchParams;
   const itemId = Number(id);
   if (!Number.isSafeInteger(itemId) || itemId <= 0) notFound();
 
@@ -56,6 +63,11 @@ export default async function ItemStockPage({ params }: { params: Promise<{ id: 
             item={item}
             action={receiveStockFormAction}
             showCost={canSeeCost(db, actor)}
+            returnToScanner={
+              returnToScanner === 'camera' || returnToScanner === 'hid'
+                ? returnToScanner
+                : undefined
+            }
           />
         </section>
 

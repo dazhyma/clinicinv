@@ -1,11 +1,18 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type {
   CountScanTargetView,
   InventoryCountStateView,
 } from '@/actions/inventory-count';
+import type { BarcodeConfirmationView } from '@/actions/scanning';
+import {
+  BarcodeCapture,
+  type BarcodeCaptureHandle,
+  type BarcodeConfirmOutcome,
+  type BarcodeScanSource,
+} from '../../_components/barcode-capture';
 import {
   applyInventoryCountServerAction,
   cancelInventoryCountServerAction,
@@ -26,9 +33,9 @@ import {
  * «незавершённая инвентаризация сохраняется при обновлении страницы» выполняется
  * буквально — терять на клиенте нечего.
  *
- * Поле сканирования удерживает фокус так же, как на операционном экране (D-34):
- * единственное исключение — ввод найденного количества, куда пользователь
- * печатает число, и открытый диалог подтверждения.
+ * И камера, и HID-сканер сначала показывают read-only карточку. Только Confirm
+ * Item открывает поле количества; сам lookup не создаёт строку и не меняет
+ * остаток.
  */
 
 type Tone = 'ok' | 'error' | 'pending';
@@ -48,37 +55,31 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
   const [busy, setBusy] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const scanRef = useRef<HTMLInputElement>(null);
+  const scannerRef = useRef<BarcodeCaptureHandle>(null);
   const quantityRef = useRef<HTMLInputElement>(null);
-
-  const focusScanner = useCallback(() => {
-    if (typeof document === 'undefined') return;
-    const active = document.activeElement as HTMLElement | null;
-    if (active?.closest('[role="dialog"]')) return;
-    if (active === quantityRef.current) return;
-    scanRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    focusScanner();
-  }, [focusScanner]);
+  const returnToCameraRef = useRef(false);
 
   // --- Шаг 2: скан предмета -------------------------------------------------
 
-  async function handleScan(raw: string) {
-    const barcode = raw.trim();
-    if (!barcode) return;
-
+  async function confirmScannedItem(
+    candidate: BarcodeConfirmationView,
+    source: BarcodeScanSource,
+  ): Promise<BarcodeConfirmOutcome> {
     setBusy(true);
-    setFeedback({ tone: 'pending', text: `${barcode} — checking…` });
+    setFeedback({ tone: 'pending', text: `${candidate.name} — opening count…` });
     try {
-      const result = await scanForCountServerAction({ countId: state.id, barcode });
+      // A second read validates that the draft is still open and includes an
+      // already-counted value if this item is being revisited.
+      const result = await scanForCountServerAction({
+        countId: state.id,
+        barcode: candidate.barcode,
+      });
       if (!result.ok) {
-        // §14.4: «Barcode not found», «… is a pack — scan the item barcodes instead».
         setFeedback({ tone: 'error', text: result.error });
         setTarget(null);
-        return;
+        return { ok: false, error: result.error };
       }
+      returnToCameraRef.current = source === 'camera';
       setTarget(result.data);
       setCountedInput(
         result.data.countedQuantity != null ? String(result.data.countedQuantity) : '',
@@ -87,15 +88,20 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
         tone: 'ok',
         text: `${result.data.name} — expected ${result.data.expectedQuantity} ${result.data.unitOfMeasurement}`,
       });
-      window.setTimeout(() => quantityRef.current?.focus(), 0);
+      window.setTimeout(() => quantityRef.current?.focus(), 100);
+      return { ok: true, next: 'close' };
     } catch {
-      setFeedback({
-        tone: 'error',
-        text: 'Not saved — check the connection and scan again',
-      });
+      const message = 'Item could not be opened — check the connection and scan again';
+      setFeedback({ tone: 'error', text: message });
+      return { ok: false, error: message };
     } finally {
       setBusy(false);
     }
+  }
+
+  function continueScanning() {
+    if (returnToCameraRef.current) scannerRef.current?.openCamera();
+    else scannerRef.current?.focusInput();
   }
 
   // --- Шаги 3–5: фактическое количество, ожидаемое, разница ------------------
@@ -124,7 +130,7 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
       setFeedback({ tone: 'ok', text: result.data.message });
       setTarget(null);
       setCountedInput('');
-      focusScanner();
+      window.setTimeout(continueScanning, 100);
     } catch {
       setFeedback({
         tone: 'error',
@@ -190,32 +196,15 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
         </p>
       </section>
 
-      {/* --- Шаг 2: поле сканирования --- */}
-      <form
-        className="rounded-2xl bg-white p-4 ring-1 ring-slate-200"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const input = scanRef.current;
-          if (!input) return;
-          const value = input.value;
-          input.value = '';
-          void handleScan(value);
-        }}
-      >
-        <label htmlFor="count-scan" className="text-base font-medium text-slate-700">
-          Item barcode
-        </label>
-        <input
-          id="count-scan"
-          ref={scanRef}
-          type="text"
-          autoComplete="off"
-          autoCorrect="off"
-          spellCheck={false}
-          placeholder="Ready to scan"
-          className="mt-1 w-full rounded-xl border-2 border-slate-400 px-4 py-4 font-mono text-2xl"
-        />
-      </form>
+      <BarcodeCapture
+        ref={scannerRef}
+        id="count-scan"
+        label="Item barcode"
+        confirmLabel="Confirm Item"
+        allowPacks={false}
+        disabled={busy || Boolean(target)}
+        onConfirm={confirmScannedItem}
+      />
 
       {/* --- Шаги 3–5: найденное количество, ожидаемое, разница --- */}
       {target ? (
@@ -288,7 +277,7 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
               onClick={() => {
                 setTarget(null);
                 setCountedInput('');
-                focusScanner();
+                window.setTimeout(continueScanning, 100);
               }}
               className="rounded-xl border-2 border-slate-400 px-6 py-4 text-lg font-semibold"
             >

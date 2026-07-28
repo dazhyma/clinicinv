@@ -3,7 +3,6 @@ import { notFound } from 'next/navigation';
 import {
   getOperationState,
   getOperationSummary,
-  scanIndexForActor,
   soundOnScanEnabled,
   type OperationLineView,
   type OperationStateView,
@@ -140,10 +139,6 @@ export default async function OperationPage({ params }: { params: Promise<{ id: 
       />
       <OperationScreen
         initialState={state}
-        // Индекс «код → название» отдаётся вместе со страницей: без него клиент
-        // не может назвать предмет до ответа сервера, а §14.3 даёт на реакцию
-        // не более 500 мс.
-        scanIndex={scanIndexForActor(db)}
         soundEnabled={soundOnScanEnabled(db)}
         isAdmin={isAdmin}
       />

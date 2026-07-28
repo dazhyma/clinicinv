@@ -5,6 +5,7 @@ import { requirePageAdmin } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import { AppHeader } from '../../_components/app-header';
 import { ItemPhoto } from '../../_components/item-photo';
+import { ReceiveStockScanner } from '../_components/receive-stock-scanner';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,17 +13,16 @@ export const dynamic = 'force-dynamic';
  * Receive Stock, шаг 1 (§5.8): «отсканировать внутренний штрихкод или найти
  * предмет вручную».
  *
- * Поле ввода принимает и то и другое: сканер в режиме эмуляции клавиатуры
- * (Q-6) вводит внутренний код и жмёт Enter — форма отправляется, а поиск по
- * внутреннему коду находит ровно один предмет.
+ * Камера и HID-сканер используют одну read-only карточку подтверждения.
+ * Ручной текстовый поиск остаётся отдельным запасным способом.
  */
 export default async function ReceiveStockPickerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; camera?: string }>;
 }) {
   const { account, actor } = await requirePageAdmin();
-  const { q = '' } = await searchParams;
+  const { q = '', camera = '' } = await searchParams;
 
   const result = q.trim()
     ? listItemsForActor(getDb(), actor, { q, limit: 25 })
@@ -32,11 +32,15 @@ export default async function ReceiveStockPickerPage({
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col p-4 sm:p-6">
       <AppHeader
         title="Receive Stock"
-        subtitle="Scan the internal barcode or search for the item."
+        subtitle="Confirm the item, then enter the received quantity and cost."
         backHref="/inventory"
         backLabel="Inventory"
         account={account}
       />
+
+      <div className="mb-5">
+        <ReceiveStockScanner autoOpenCamera={camera === '1'} />
+      </div>
 
       {/* Атрибут action обычной GET-формы Next префиксом не дополняет (D-51). */}
       <form
@@ -45,7 +49,7 @@ export default async function ReceiveStockPickerPage({
         className="mb-5 flex flex-col gap-3 sm:flex-row"
       >
         <label htmlFor="q" className="sr-only">
-          Scan a barcode or search by name, internal code, SKU or reference number
+          Search by name, internal code, SKU or reference number
         </label>
         <input
           id="q"
@@ -53,7 +57,7 @@ export default async function ReceiveStockPickerPage({
           type="search"
           autoFocus
           defaultValue={q}
-          placeholder="Scan barcode or search…"
+          placeholder="Search by name, code, SKU or reference…"
           className="flex-1 rounded-lg border border-slate-300 px-4 py-3 text-lg"
         />
         <button
@@ -66,7 +70,7 @@ export default async function ReceiveStockPickerPage({
 
       {q.trim() && result.items.length === 0 ? (
         <p role="status" className="rounded-2xl bg-white p-6 text-lg text-slate-700 ring-1 ring-slate-200">
-          Barcode not found. Check the code or search by name.
+          No items match this search.
         </p>
       ) : null}
 

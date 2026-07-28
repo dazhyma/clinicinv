@@ -7,10 +7,15 @@ import type {
   ItemSearchResultView,
   OperationMutationResult,
   OperationStateView,
-  ScanIndexEntry,
 } from '@/actions/operations';
 import type { ActionResult } from '@/actions/result';
+import type { BarcodeConfirmationView } from '@/actions/scanning';
 import { newClientEventId } from '../../_components/client-event-id';
+import {
+  BarcodeCapture,
+  type BarcodeCaptureHandle,
+  type BarcodeConfirmOutcome,
+} from '../../_components/barcode-capture';
 import {
   addItemAction,
   changeLineQuantityServerAction,
@@ -33,22 +38,19 @@ import { VoidOperationButton } from './void-dialog';
  *    Поэтому refresh, закрытие вкладки, logout и перезапуск сервера ничего не
  *    теряют — терять на клиенте попросту нечего.
  *
- * 2) Отклик ≤500 мс (§14.3). Скан отображается СРАЗУ, не дожидаясь ответа:
- *    строка появляется в списке, подтверждение — в баннере. Оптимистичное
- *    состояние держится отдельно от серверного и снимается ответом. Если сервер
- *    отказал, откат ВИДЕН: красный баннер называет предмет, который не добавлен.
- *    Молчаливое исчезновение действия запрещено (§14.4).
+ * 2) Распознавание и добавление — два разных шага. Камера или HID-сканер сначала
+ *    выполняют только read-only lookup и показывают карточку. Идентификатор
+ *    события, оптимистичная строка и серверная мутация появляются только после
+ *    явного Add. Закрытие карточки/страницы не может списать остаток.
  *
  * 3) Каждое действие несёт `clientEventId`, сгенерированный здесь, на клиенте
  *    (§10.4, §16). Двойное срабатывание сканера, ретрай после таймаута и
  *    повторная отправка не списывают предмет дважды — ключ проверяется
  *    уникальным индексом БД.
  *
- * Поле сканирования готово постоянно (§7.5): фокус возвращается в него после
- * ответа сервера, после нажатий `−`/`+`, после закрытия ручного поиска и после
- * возврата на вкладку. Пользователь не кликает в поле перед каждым сканом и
- * ничего не подтверждает после успешного скана (§14.2) — подтверждение
- * показывается баннером, а не диалогом (C-9).
+ * HID-поле сканирования готово постоянно (§7.5), а камера использует ту же
+ * карточку подтверждения. После успешного Add камера остаётся открытой и
+ * возвращается к распознаванию следующего штрихкода.
  */
 
 interface OptimisticLine {
@@ -102,12 +104,10 @@ const TONE_STYLES: Record<FeedbackTone, string> = {
 
 export function OperationScreen({
   initialState,
-  scanIndex,
   soundEnabled,
   isAdmin,
 }: {
   initialState: OperationStateView;
-  scanIndex: ScanIndexEntry[];
   soundEnabled: boolean;
   isAdmin: boolean;
 }) {
@@ -122,11 +122,9 @@ export function OperationScreen({
   const [manualOpen, setManualOpen] = useState(false);
   const [finishOpen, setFinishOpen] = useState(false);
   const [finishing, setFinishing] = useState(false);
-  const [scannerFocused, setScannerFocused] = useState(true);
-
   const [finishError, setFinishError] = useState<string | null>(null);
 
-  const inputRef = useRef<HTMLInputElement>(null);
+  const scannerRef = useRef<BarcodeCaptureHandle>(null);
   const finishButtonRef = useRef<HTMLButtonElement>(null);
   const dialogOpenRef = useRef(false);
   const feedbackId = useRef(0);
@@ -138,12 +136,6 @@ export function OperationScreen({
   const focusDeferredRef = useRef(false);
   /** Защита от повторного входа в confirmFinish (кнопка + двойной клик). */
   const finishingRef = useRef(false);
-
-  const index = useMemo(() => {
-    const map = new Map<string, ScanIndexEntry>();
-    for (const entry of scanIndex) map.set(entry.barcode.toUpperCase(), entry);
-    return map;
-  }, [scanIndex]);
 
   // --- Фокус: поле сканирования готово постоянно (§7.5) ---------------------
 
@@ -179,7 +171,7 @@ export function OperationScreen({
       focusDeferredRef.current = true;
       return;
     }
-    inputRef.current?.focus({ preventScroll: true });
+    scannerRef.current?.focusInput();
   }, []);
 
   useEffect(() => {
@@ -296,6 +288,7 @@ export function OperationScreen({
           });
           playScanSound('error', soundEnabled);
         }
+        return result;
       } catch {
         // Сервер недоступен: ничего не сохранено и локальной очереди нет (§20 —
         // полноценный offline вне MVP). Пользователь обязан это видеть (§8.4).
@@ -307,6 +300,11 @@ export function OperationScreen({
           warnings: [],
         });
         playScanSound('error', soundEnabled);
+        return {
+          ok: false as const,
+          error: 'Changes are not synced — check connection',
+          code: 'UNEXPECTED' as const,
+        };
       } finally {
         if (options.entry) {
           setPending((list) => list.filter((item) => item.clientEventId !== options.entry?.clientEventId));
@@ -326,18 +324,15 @@ export function OperationScreen({
 
   // --- Скан (§7.5) -----------------------------------------------------------
 
-  const handleScan = useCallback(
-    (raw: string) => {
-      const barcode = raw.trim().toUpperCase();
-      if (!barcode) return;
-
-      const clientEventId = newClientEventId();
-      const known = index.get(barcode);
-      const label = known?.name ?? barcode;
-
-      const optimisticLines: OptimisticLine[] = known
-        ? known.kind === 'pack'
-          ? (known.components ?? []).map((component) => ({
+  const confirmScannedTarget = useCallback(
+    async (
+      known: BarcodeConfirmationView,
+      _source: 'camera' | 'hid',
+      clientEventId: string,
+    ): Promise<BarcodeConfirmOutcome> => {
+      const optimisticLines: OptimisticLine[] =
+        known.kind === 'pack'
+          ? known.components.map((component) => ({
               key: `${clientEventId}:${component.itemId}`,
               itemId: component.itemId,
               name: component.name,
@@ -354,23 +349,30 @@ export function OperationScreen({
                 quantity: 1,
                 packName: null,
               },
-            ]
-        : [];
+            ];
 
-      // Мгновенная реакция: подтверждение и строки появляются до ответа сервера.
       showFeedback({
         tone: 'pending',
-        title: known ? `${known.name} — saving…` : `${barcode} — checking…`,
+        title: `${known.name} — saving…`,
         warnings: [],
       });
 
-      void runMutation({
-        entry: { clientEventId, label, lines: optimisticLines },
-        rollbackLabel: label,
-        call: () => scanBarcodeAction({ operationId: state.id, barcode, clientEventId }),
+      const result = await runMutation({
+        entry: { clientEventId, label: known.name, lines: optimisticLines },
+        rollbackLabel: known.name,
+        call: () =>
+          scanBarcodeAction({
+            operationId: state.id,
+            barcode: known.barcode,
+            clientEventId,
+          }),
       });
+
+      return result.ok
+        ? { ok: true, message: result.data.message, next: 'resume' }
+        : { ok: false, error: result.error };
     },
-    [index, runMutation, showFeedback, state.id],
+    [runMutation, showFeedback, state.id],
   );
 
   // --- Ручное добавление (§7.8) ---------------------------------------------
@@ -622,51 +624,13 @@ export function OperationScreen({
         )}
       </section>
 
-      {/* --- Поле сканирования (§7.5) --- */}
-      <form
-        className="rounded-2xl bg-white p-4 ring-1 ring-slate-200"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const input = inputRef.current;
-          if (!input) return;
-          const value = input.value;
-          input.value = '';
-          handleScan(value);
-        }}
-      >
-        <label htmlFor="scan-input" className="text-base font-medium text-slate-700">
-          Barcode
-        </label>
-        <input
-          id="scan-input"
-          ref={inputRef}
-          type="text"
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="characters"
-          spellCheck={false}
-          // Сканер клиники — HID-устройство: печатает символы и жмёт Enter.
-          // Экранная клавиатура на планшете при этом не нужна и только
-          // перекрывает список позиций.
-          inputMode="none"
-          onFocus={() => setScannerFocused(true)}
-          onBlur={() => {
-            setScannerFocused(false);
-            window.setTimeout(focusScanner, 0);
-          }}
-          placeholder="Ready to scan"
-          className="mt-1 w-full rounded-xl border-2 border-slate-400 px-4 py-4 font-mono text-2xl"
-        />
-        <p
-          className={`mt-2 inline-flex rounded-full px-4 py-2 text-lg font-semibold ${
-            scannerFocused
-              ? 'bg-emerald-100 text-emerald-900'
-              : 'bg-amber-100 text-amber-900'
-          }`}
-        >
-          {scannerFocused ? 'Scanner ready' : 'Tap here to activate the scanner'}
-        </p>
-      </form>
+      {/* Распознавание ничего не списывает: Add создаёт отдельное событие. */}
+      <BarcodeCapture
+        ref={scannerRef}
+        id="operation-scan-input"
+        confirmLabel="Add"
+        onConfirm={confirmScannedTarget}
+      />
 
       {/* --- Исправления (§7.9, §14.2: Undo всегда виден) --- */}
       <div className="flex flex-wrap gap-3">

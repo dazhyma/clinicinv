@@ -1,6 +1,7 @@
 'use client';
 
 import { useActionState, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { ADJUSTMENT_REASONS } from '@/db/schema';
 import type { ItemView } from '@/actions/items';
 import type { FormState } from '../actions';
@@ -31,14 +32,22 @@ export function ReceiveStockForm({
   item,
   action,
   showCost,
+  returnToScanner,
 }: {
   item: ItemView;
   action: (state: FormState, formData: FormData) => Promise<FormState>;
   showCost: boolean;
+  returnToScanner?: 'camera' | 'hid';
 }) {
+  const router = useRouter();
   const [state, formAction] = useActionState(action, initialState);
   const fieldErrors = state.fieldErrors ?? {};
   const clientEventId = useIdempotencyKey(state);
+
+  useEffect(() => {
+    if (!state.ok || !returnToScanner) return;
+    router.push(returnToScanner === 'camera' ? '/inventory/receive?camera=1' : '/inventory/receive');
+  }, [returnToScanner, router, state.ok]);
 
   return (
     <form action={formAction} className="flex flex-col gap-5">

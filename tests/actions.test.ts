@@ -31,9 +31,9 @@ function expectSuccess<T>(result: { ok: boolean }) {
   return result as unknown as { ok: true; data: T };
 }
 
-// --- §3.2, §18.22: Staff не может выполнять административные действия --------
+// --- Матрица прав Staff: два inventory-процесса без полного Admin-доступа -----
 
-describe('Слой действий: Staff получает отказ по каждому Admin-действию', () => {
+describe('Слой действий: точечные права Staff', () => {
   it('Add New Item отклоняется, предмет не создан', () => {
     const ctx = setupTestDb();
 
@@ -69,11 +69,11 @@ describe('Слой действий: Staff получает отказ по ка
     expect(unchanged.currentUnitCostCents).toBe(FIXTURES.gauze.costCents);
   });
 
-  it('Receive Stock отклоняется, остаток не изменился', () => {
+  it('Receive Stock доступен и создаёт приход для Staff', () => {
     const ctx = setupTestDb();
     const item = makeItem(ctx, FIXTURES.gauze);
 
-    const result = expectFailure(
+    const result = expectSuccess<{ quantityAfter: number; applied: boolean }>(
       receiveStockAction(ctx.db, ctx.staff, {
         itemId: item.id,
         quantity: '20',
@@ -81,8 +81,9 @@ describe('Слой действий: Staff получает отказ по ка
       }),
     );
 
-    expect(result.code).toBe('FORBIDDEN');
-    expect(getItem(ctx.db, item.id)!.currentQuantity).toBe(FIXTURES.gauze.quantity);
+    expect(result.data.applied).toBe(true);
+    expect(result.data.quantityAfter).toBe(30);
+    expect(getItem(ctx.db, item.id)!.currentQuantity).toBe(30);
   });
 
   it('ручная корректировка отклоняется, остаток не изменился', () => {
@@ -190,6 +191,42 @@ describe('Себестоимость для Staff (§3.2, настройка sta
 
     const view = listItemsForActor(ctx.db, ctx.staff, {}).items[0]!;
     expect(view.unitCostCents).toBe(FIXTURES.gauze.costCents);
+  });
+
+  it('Staff не может указать новую себестоимость, пока настройка выключена', () => {
+    const ctx = setupTestDb();
+    const item = makeItem(ctx, FIXTURES.gauze);
+
+    const result = expectFailure(
+      receiveStockAction(ctx.db, ctx.staff, {
+        itemId: item.id,
+        quantity: '5',
+        newCostPerUnit: '4.25',
+        clientEventId: nextClientEventId('recv'),
+      }),
+    );
+
+    expect(result.code).toBe('FORBIDDEN');
+    expect(getItem(ctx.db, item.id)!.currentQuantity).toBe(10);
+    expect(getItem(ctx.db, item.id)!.currentUnitCostCents).toBe(300);
+  });
+
+  it('после включения настройки Staff может указать новую себестоимость поставки', () => {
+    const ctx = setupTestDb();
+    const item = makeItem(ctx, FIXTURES.gauze);
+    setSetting(ctx.db, SETTING_KEYS.staffCanSeeCost, 'true');
+
+    expectSuccess(
+      receiveStockAction(ctx.db, ctx.staff, {
+        itemId: item.id,
+        quantity: '5',
+        newCostPerUnit: '4.25',
+        clientEventId: nextClientEventId('recv'),
+      }),
+    );
+
+    expect(getItem(ctx.db, item.id)!.currentQuantity).toBe(15);
+    expect(getItem(ctx.db, item.id)!.currentUnitCostCents).toBe(425);
   });
 });
 

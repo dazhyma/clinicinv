@@ -8,9 +8,9 @@
  * валидация и формулировки ошибок — в слое действий, корректировка остатка
  * движением `count_correction` — в `src/domain/inventory-count.ts`.
  *
- * Сессия и роль проверяются на сервере в КАЖДОМ действии (§15, §18.22):
- * §3.2 запрещает Staff ручную корректировку остатков, поэтому прямой вызов из
- * под Staff получает отказ, даже если кнопку восстановили в браузере.
+ * Сессия и узкое право Inventory Count проверяются на сервере в КАЖДОМ
+ * действии (§15, §18.22). Оно доступно Admin и Staff, не открывая Staff
+ * остальные административные корректировки.
  */
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -19,9 +19,12 @@ import {
   cancelInventoryCountAction,
   recordCountLineAction,
   scanForCountAction,
+  searchItemsForCountAction,
+  selectItemForCountAction,
   startInventoryCountAction,
   type ApplyCountResultView,
   type CountScanTargetView,
+  type CountSearchResultView,
   type RecordCountLineResult,
 } from '@/actions/inventory-count';
 import { toFailure, type ActionFailure, type ActionResult } from '@/actions/result';
@@ -37,7 +40,7 @@ async function actorOrFailure(): Promise<{ actor: Actor } | { failure: ActionFai
   }
 }
 
-/** §5.10, шаг 1: Admin начинает новую инвентаризацию. */
+/** §5.10, шаг 1: Admin или Staff начинает/продолжает общий черновик. */
 export async function startInventoryCountFormAction(): Promise<void> {
   const auth = await actorOrFailure();
   if ('failure' in auth) redirect('/login');
@@ -56,6 +59,24 @@ export async function scanForCountServerAction(input: {
   const auth = await actorOrFailure();
   if ('failure' in auth) return auth.failure;
   return scanForCountAction(getDb(), auth.actor, input);
+}
+
+export async function searchItemsForCountServerAction(input: {
+  countId: number;
+  query: string;
+}): Promise<ActionResult<CountSearchResultView[]>> {
+  const auth = await actorOrFailure();
+  if ('failure' in auth) return auth.failure;
+  return searchItemsForCountAction(getDb(), auth.actor, input);
+}
+
+export async function selectItemForCountServerAction(input: {
+  countId: number;
+  itemId: number;
+}): Promise<ActionResult<CountScanTargetView>> {
+  const auth = await actorOrFailure();
+  if ('failure' in auth) return auth.failure;
+  return selectItemForCountAction(getDb(), auth.actor, input);
 }
 
 export async function recordCountLineServerAction(input: {

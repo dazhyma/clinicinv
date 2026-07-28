@@ -14,7 +14,7 @@ import {
   type InventoryCountLineRow,
   type InventoryCountRow,
 } from '@/db/schema';
-import { assertAdmin, type Actor } from './actor';
+import { assertInventoryWorker, type Actor } from './actor';
 import { AUDIT_ACTIONS, writeAudit } from './audit';
 import { errors } from './errors';
 import { applyMovement, idempotencyKeys, runInTransaction } from './movements';
@@ -25,7 +25,7 @@ export function startInventoryCount(
   actor: Actor,
   notes?: string | null,
 ): InventoryCountRow {
-  assertAdmin(actor, 'start inventory count');
+  assertInventoryWorker(actor, 'start inventory count');
   const now = new Date();
   return db
     .insert(inventoryCounts)
@@ -79,7 +79,7 @@ export function upsertCountLine(
   actor: Actor,
   input: UpsertCountLineInput,
 ): InventoryCountLineRow {
-  assertAdmin(actor, 'record inventory count line');
+  assertInventoryWorker(actor, 'record inventory count line');
   assertNonNegativeQuantity(input.countedQuantity, 'Counted quantity');
 
   return runInTransaction(db, (tx) => {
@@ -159,7 +159,7 @@ export function applyInventoryCount(
   actor: Actor,
   countId: number,
 ): ApplyCountResult {
-  assertAdmin(actor, 'apply inventory count');
+  assertInventoryWorker(actor, 'apply inventory count');
 
   return runInTransaction(db, (tx) => {
     const count = getInventoryCount(tx, countId);
@@ -226,7 +226,7 @@ export function cancelInventoryCount(
   actor: Actor,
   countId: number,
 ): InventoryCountRow {
-  assertAdmin(actor, 'cancel inventory count');
+  assertInventoryWorker(actor, 'cancel inventory count');
   return runInTransaction(db, (tx) => {
     const count = getInventoryCount(tx, countId);
     if (!count) throw errors.countNotFound();

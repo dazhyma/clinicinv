@@ -26,9 +26,9 @@ interface SearchParams {
 /**
  * Вкладка Items раздела Inventory (§5.1–§5.3, §5.11).
  *
- * Чтение доступно обеим ролям: §3.2 разрешает Staff просматривать доступное
- * количество предметов. Административные кнопки Staff не показываются, но это
- * лишь эргономика — сами действия отклоняются на сервере (§18.22).
+ * Чтение, Receive Stock и Inventory Count доступны обеим ролям. Создание,
+ * редактирование и ручная корректировка остаются только у Admin; это
+ * дополнительно проверяется серверными actions и доменом.
  */
 export default async function InventoryItemsPage({
   searchParams,
@@ -76,34 +76,28 @@ export default async function InventoryItemsPage({
         </p>
       ) : null}
 
-      {isAdmin ? (
-        <div className="mb-4 flex flex-wrap gap-3">
+      <div className="mb-4 flex flex-wrap gap-3">
+        {isAdmin ? (
           <Link
             href="/inventory/items/new"
             className="rounded-xl bg-slate-900 px-6 py-3 text-lg font-semibold text-white"
           >
             Add New Item
           </Link>
-          <Link
-            href="/inventory/receive"
-            className="rounded-xl border border-slate-300 bg-white px-6 py-3 text-lg font-semibold text-slate-800"
-          >
-            Receive Stock
-          </Link>
-          {/*
-            §5.1: Inventory Count — действие раздела Inventory. Только Admin:
-            §3.2 не даёт Staff корректировать остатки вручную. Скрытая кнопка
-            защитой не считается — страница и все её действия проверяют роль на
-            сервере (§18.22).
-          */}
-          <Link
-            href="/inventory/count"
-            className="rounded-xl border border-slate-300 bg-white px-6 py-3 text-lg font-semibold text-slate-800"
-          >
-            Inventory Count
-          </Link>
-        </div>
-      ) : null}
+        ) : null}
+        <Link
+          href="/inventory/receive"
+          className="rounded-xl border border-slate-300 bg-white px-6 py-3 text-lg font-semibold text-slate-800"
+        >
+          Receive Stock
+        </Link>
+        <Link
+          href="/inventory/count"
+          className="rounded-xl border border-slate-300 bg-white px-6 py-3 text-lg font-semibold text-slate-800"
+        >
+          Inventory Count
+        </Link>
+      </div>
 
       <div className="mb-5">
         <ItemFilters

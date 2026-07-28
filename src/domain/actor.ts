@@ -24,6 +24,23 @@ export function assertAuthenticated(actor: Actor | null | undefined): Actor {
   return actor;
 }
 
+/**
+ * Receive Stock и Inventory Count доступны обеим рабочим ролям. Выделенный
+ * guard не даёт случайно расширить остальные Admin-действия вместе с ними.
+ */
+export function assertInventoryWorker(
+  actor: Actor | null | undefined,
+  action: string,
+): Actor {
+  if (!actor) throw errors.notAuthenticated();
+  if (actor.role !== 'Admin' && actor.role !== 'Staff') throw errors.forbidden(action);
+  return actor;
+}
+
 export function isAdmin(actor: Actor | null | undefined): boolean {
   return actor?.role === 'Admin';
+}
+
+export function isInventoryWorker(actor: Actor | null | undefined): boolean {
+  return actor?.role === 'Admin' || actor?.role === 'Staff';
 }

@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type {
   CountScanTargetView,
+  CountSearchResultView,
   InventoryCountStateView,
 } from '@/actions/inventory-count';
 import type { BarcodeConfirmationView } from '@/actions/scanning';
@@ -18,7 +19,9 @@ import {
   cancelInventoryCountServerAction,
   recordCountLineServerAction,
   scanForCountServerAction,
+  selectItemForCountServerAction,
 } from '../count/actions';
+import { CountManualSearchDialog } from './count-manual-search';
 
 /**
  * Экран инвентаризации (§5.10).
@@ -54,12 +57,24 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
   const [feedback, setFeedback] = useState<{ tone: Tone; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [manualSearchOpen, setManualSearchOpen] = useState(false);
 
   const scannerRef = useRef<BarcodeCaptureHandle>(null);
   const quantityRef = useRef<HTMLInputElement>(null);
   const returnToCameraRef = useRef(false);
 
   // --- Шаг 2: скан предмета -------------------------------------------------
+
+  function openQuantityEntry(item: CountScanTargetView, returnToCamera: boolean) {
+    returnToCameraRef.current = returnToCamera;
+    setTarget(item);
+    setCountedInput(item.countedQuantity != null ? String(item.countedQuantity) : '');
+    setFeedback({
+      tone: 'ok',
+      text: `${item.name} — expected ${item.expectedQuantity} ${item.unitOfMeasurement}`,
+    });
+    window.setTimeout(() => quantityRef.current?.focus(), 100);
+  }
 
   async function confirmScannedItem(
     candidate: BarcodeConfirmationView,
@@ -79,16 +94,7 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
         setTarget(null);
         return { ok: false, error: result.error };
       }
-      returnToCameraRef.current = source === 'camera';
-      setTarget(result.data);
-      setCountedInput(
-        result.data.countedQuantity != null ? String(result.data.countedQuantity) : '',
-      );
-      setFeedback({
-        tone: 'ok',
-        text: `${result.data.name} — expected ${result.data.expectedQuantity} ${result.data.unitOfMeasurement}`,
-      });
-      window.setTimeout(() => quantityRef.current?.focus(), 100);
+      openQuantityEntry(result.data, source === 'camera');
       return { ok: true, next: 'close' };
     } catch {
       const message = 'Item could not be opened — check the connection and scan again';
@@ -99,9 +105,29 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
     }
   }
 
+  async function confirmManualItem(item: CountSearchResultView) {
+    setBusy(true);
+    try {
+      const result = await selectItemForCountServerAction({
+        countId: state.id,
+        itemId: item.itemId,
+      });
+      if (!result.ok) throw new Error(result.error);
+      setManualSearchOpen(false);
+      openQuantityEntry(result.data, false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function continueScanning() {
     if (returnToCameraRef.current) scannerRef.current?.openCamera();
     else scannerRef.current?.focusInput();
+  }
+
+  function closeManualSearch() {
+    setManualSearchOpen(false);
+    window.setTimeout(() => scannerRef.current?.focusInput(), 100);
   }
 
   // --- Шаги 3–5: фактическое количество, ожидаемое, разница ------------------
@@ -202,9 +228,18 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
         label="Item barcode"
         confirmLabel="Confirm Item"
         allowPacks={false}
-        disabled={busy || Boolean(target)}
+        disabled={busy || Boolean(target) || manualSearchOpen}
         onConfirm={confirmScannedItem}
       />
+
+      <button
+        type="button"
+        disabled={busy || Boolean(target)}
+        onClick={() => setManualSearchOpen(true)}
+        className="rounded-xl border-2 border-slate-400 bg-white px-6 py-4 text-lg font-semibold disabled:opacity-50"
+      >
+        Find Item Manually
+      </button>
 
       {/* --- Шаги 3–5: найденное количество, ожидаемое, разница --- */}
       {target ? (
@@ -393,6 +428,13 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
           </div>
         </div>
       ) : null}
+
+      <CountManualSearchDialog
+        open={manualSearchOpen}
+        countId={state.id}
+        onClose={closeManualSearch}
+        onPick={confirmManualItem}
+      />
     </div>
   );
 }

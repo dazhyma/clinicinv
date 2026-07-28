@@ -1,9 +1,8 @@
 /**
  * §5.10 — инвентаризация через слой действий (`src/actions/inventory-count.ts`).
  *
- * Действия вызываются НАПРЯМУЮ, минуя HTTP и экран: так выглядит и попытка
- * Staff выполнить Admin-действие вручную (§3.2, §18.22, AC-6.2 шаг 11), и
- * повторное чтение состояния после refresh.
+ * Действия вызываются НАПРЯМУЮ, минуя HTTP и экран: так проверяется разрешённый
+ * Staff inventory-процесс и повторное чтение состояния после refresh.
  *
  * Главное проверяемое свойство: расхождение исправляется ДВИЖЕНИЕМ
  * `count_correction`, а не записью остатка. Поэтому инвариант
@@ -17,6 +16,8 @@ import {
   getCountStateForActor,
   recordCountLineAction,
   scanForCountAction,
+  searchItemsForCountAction,
+  selectItemForCountAction,
   startInventoryCountAction,
   type InventoryCountStateView,
 } from '@/actions/inventory-count';
@@ -283,48 +284,87 @@ describe('§5.10: незавершённая инвентаризация хра
   });
 });
 
-// --- §3.2, §18.22: роли ------------------------------------------------------
+// --- Staff и Admin работают с одним общим черновиком -------------------------
 
-describe('§3.2: инвентаризация доступна только Admin', () => {
-  it('Staff не может начать инвентаризацию, записать строку и подтвердить её', () => {
+describe('Inventory Count доступен Staff без расширения остальных прав', () => {
+  it('Staff начинает, сканирует, сохраняет и применяет инвентаризацию', () => {
     const ctx = setupTestDb();
     const gauze = makeItem(ctx, { ...FIXTURES.gauze, quantity: 10 });
 
-    const denied = expectFailure(startInventoryCountAction(ctx.db, ctx.staff));
-    expect(denied.code).toBe('FORBIDDEN');
+    const count = expectSuccess<InventoryCountStateView>(
+      startInventoryCountAction(ctx.db, ctx.staff),
+    ).data;
+    expect(findDraftCountForActor(ctx.db, ctx.admin)?.id).toBe(count.id);
+    expect(findDraftCountForActor(ctx.db, ctx.staff)?.id).toBe(count.id);
 
-    // Черновик, начатый Admin, Staff тоже не двигает и не видит.
+    const target = expectSuccess<{ itemId: number; expectedQuantity: number }>(
+      scanForCountAction(ctx.db, ctx.staff, {
+        countId: count.id,
+        barcode: gauze.barcodeValue,
+      }),
+    ).data;
+    expect(target).toMatchObject({ itemId: gauze.id, expectedQuantity: 10 });
+
+    expectSuccess(
+      recordCountLineAction(ctx.db, ctx.staff, {
+        countId: count.id,
+        itemId: gauze.id,
+        countedQuantity: 7,
+      }),
+    );
+    expect(stockOf(ctx, gauze.id)).toBe(10);
+
+    expectSuccess(applyInventoryCountAction(ctx.db, ctx.staff, count.id));
+    expect(stockOf(ctx, gauze.id)).toBe(7);
+    expect(findStockInvariantMismatches(ctx.db)).toEqual([]);
+  });
+
+  it('Staff видит общий черновик Admin и может отменить его', () => {
+    const ctx = setupTestDb();
     const count = startCount(ctx);
 
-    expect(expectFailure(scanForCountAction(ctx.db, ctx.staff, {
-      countId: count.id,
-      barcode: gauze.barcodeValue,
-    })).code).toBe('FORBIDDEN');
+    const continued = expectSuccess<InventoryCountStateView>(
+      startInventoryCountAction(ctx.db, ctx.staff),
+    ).data;
+    expect(continued.id).toBe(count.id);
+    expect(getCountStateForActor(ctx.db, ctx.staff, count.id)?.status).toBe('draft');
 
-    expect(
-      expectFailure(
-        recordCountLineAction(ctx.db, ctx.staff, {
-          countId: count.id,
-          itemId: gauze.id,
-          countedQuantity: 1,
-        }),
-      ).code,
-    ).toBe('FORBIDDEN');
+    expectSuccess(cancelInventoryCountAction(ctx.db, ctx.staff, count.id));
+    expect(findDraftCountForActor(ctx.db, ctx.admin)).toBeUndefined();
+    expect(getCountStateForActor(ctx.db, ctx.staff, count.id)?.status).toBe('cancelled');
+  });
 
-    expect(expectFailure(applyInventoryCountAction(ctx.db, ctx.staff, count.id)).code).toBe(
-      'FORBIDDEN',
+  it('ручной поиск находит товар и Confirm Item открывает его без изменения остатка', () => {
+    const ctx = setupTestDb();
+    const gauze = makeItem(
+      ctx,
+      { ...FIXTURES.gauze, quantity: 10 },
+      { sku: 'GAUZE-SKU', referenceNumber: 'REF-44' },
     );
-    expect(expectFailure(cancelInventoryCountAction(ctx.db, ctx.staff, count.id)).code).toBe(
-      'FORBIDDEN',
-    );
+    makeItem(ctx, FIXTURES.mask);
+    const count = expectSuccess<InventoryCountStateView>(
+      startInventoryCountAction(ctx.db, ctx.staff),
+    ).data;
 
-    // Чтение состояния под Staff не отдаёт данных вовсе.
-    expect(findDraftCountForActor(ctx.db, ctx.staff)).toBeUndefined();
-    expect(getCountStateForActor(ctx.db, ctx.staff, count.id)).toBeUndefined();
+    const results = expectSuccess<Array<{ itemId: number; sku: string | null }>>(
+      searchItemsForCountAction(ctx.db, ctx.staff, {
+        countId: count.id,
+        query: 'GAUZE-SKU',
+      }),
+    ).data;
+    expect(results).toEqual([
+      expect.objectContaining({ itemId: gauze.id, sku: 'GAUZE-SKU' }),
+    ]);
 
-    // Ни одной попыткой Staff остаток не изменён.
+    const selected = expectSuccess<{ itemId: number; expectedQuantity: number }>(
+      selectItemForCountAction(ctx.db, ctx.staff, {
+        countId: count.id,
+        itemId: gauze.id,
+      }),
+    ).data;
+    expect(selected).toMatchObject({ itemId: gauze.id, expectedQuantity: 10 });
     expect(stockOf(ctx, gauze.id)).toBe(10);
-    expect(findStockInvariantMismatches(ctx.db)).toEqual([]);
+    expect(getCountStateForActor(ctx.db, ctx.staff, count.id)?.lines).toEqual([]);
   });
 });
 

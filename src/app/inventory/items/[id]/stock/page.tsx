@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { canSeeCost, getItemForActor } from '@/actions/items';
-import { requirePageAdmin } from '@/auth/guards';
+import { requirePage } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import { AppHeader } from '../../../../_components/app-header';
 import { adjustStockFormAction, receiveStockFormAction } from '../../../actions';
@@ -25,7 +25,8 @@ export default async function ItemStockPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ returnToScanner?: string }>;
 }) {
-  const { account, actor } = await requirePageAdmin();
+  const { account, actor } = await requirePage();
+  const isAdmin = account.role === 'Admin';
   const { id } = await params;
   const { returnToScanner } = await searchParams;
   const itemId = Number(id);
@@ -33,13 +34,17 @@ export default async function ItemStockPage({
 
   const db = getDb();
   const item = getItemForActor(db, actor, itemId);
-  if (!item) notFound();
+  if (!item || (!isAdmin && item.status !== 'active')) notFound();
 
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col p-4 sm:p-6">
       <AppHeader
         title={item.name}
-        subtitle="Receive stock or correct the quantity on hand."
+        subtitle={
+          isAdmin
+            ? 'Receive stock or correct the quantity on hand.'
+            : 'Enter the quantity received and save the delivery.'
+        }
         backHref="/inventory"
         backLabel="Inventory"
         account={account}
@@ -56,7 +61,7 @@ export default async function ItemStockPage({
         </div>
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className={`grid gap-6 ${isAdmin ? 'lg:grid-cols-2' : ''}`}>
         <section className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
           <h2 className="mb-4 text-xl font-semibold">Receive Stock</h2>
           <ReceiveStockForm
@@ -71,13 +76,15 @@ export default async function ItemStockPage({
           />
         </section>
 
-        <section className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
-          <h2 className="mb-1 text-xl font-semibold">Manual Adjustment</h2>
-          <p className="mb-4 text-base text-slate-600">
-            Finished operations are never changed by an adjustment.
-          </p>
-          <AdjustStockForm item={item} action={adjustStockFormAction} />
-        </section>
+        {isAdmin ? (
+          <section className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
+            <h2 className="mb-1 text-xl font-semibold">Manual Adjustment</h2>
+            <p className="mb-4 text-base text-slate-600">
+              Finished operations are never changed by an adjustment.
+            </p>
+            <AdjustStockForm item={item} action={adjustStockFormAction} />
+          </section>
+        ) : null}
       </div>
     </main>
   );

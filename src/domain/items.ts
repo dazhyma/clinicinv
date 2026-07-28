@@ -2,7 +2,8 @@
  * Предметы инвентаря: создание, редактирование, поставка, ручная корректировка
  * (§5.4, §5.5, §5.7, §5.8, §5.9, §5.11).
  *
- * Все административные действия проверяют роль внутри домена (§3.2, §18.22).
+ * Каждое изменение проверяет право внутри домена (§3.2, §18.22). Receive Stock
+ * доступен Staff и Admin; создание, редактирование и adjustment — только Admin.
  */
 import { and, eq, like, or, sql, type SQL } from 'drizzle-orm';
 import type { AppDatabase, DbLike } from '@/db/client';
@@ -13,13 +14,14 @@ import {
   type EntityStatus,
   type ItemRow,
 } from '@/db/schema';
-import { assertAdmin, type Actor } from './actor';
+import { assertAdmin, assertInventoryWorker, isAdmin, type Actor } from './actor';
 import { AUDIT_ACTIONS, writeAudit } from './audit';
 import { ITEM_CODE_PREFIX, nextInternalCode, normalizeScannedCode } from './codes';
 import { errors } from './errors';
 import { assertNonNegativeCents, formatCents } from './money';
 import { applyMovement, idempotencyKeys, runInTransaction } from './movements';
 import { assertNonNegativeQuantity, assertPositiveQuantity, isValidQuantity } from './quantity';
+import { staffCanSeeCost } from './settings';
 
 export interface CreateItemInput {
   name: string;
@@ -264,7 +266,14 @@ export function receiveStock(
   actor: Actor,
   input: ReceiveStockInput,
 ): ReceiveStockResult {
-  assertAdmin(actor, 'receive stock');
+  assertInventoryWorker(actor, 'receive stock');
+  if (
+    input.newUnitCostCents != null &&
+    !isAdmin(actor) &&
+    !staffCanSeeCost(db)
+  ) {
+    throw errors.forbidden('change receipt cost');
+  }
   assertPositiveQuantity(input.quantity, 'Received quantity');
   if (input.newUnitCostCents != null) {
     assertNonNegativeCents(input.newUnitCostCents, 'Cost per Unit');

@@ -7,14 +7,13 @@
  * количества, корректировка движением `count_correction` и её идемпотентность
  * живут в `src/domain/inventory-count.ts`.
  *
- * Роль проверяется ПЕРВОЙ строкой каждого действия и повторно в домене (D-10):
- * §3.2 запрещает Staff ручную корректировку остатков, а инвентаризация — это
- * ровно она. Чтение черновика тоже закрыто: экран инвентаризации показывает
- * расхождения по складу, и Staff его не открывает даже по прямой ссылке.
+ * Роль проверяется ПЕРВОЙ строкой каждого действия и повторно в домене (D-10).
+ * Inventory Count — узкое исключение: доступен Admin и Staff, тогда как обычная
+ * ручная корректировка остатка остаётся только у Admin.
  */
 import type { AppDatabase } from '@/db/client';
 import type { InventoryCountLineRow, InventoryCountStatus, ItemRow } from '@/db/schema';
-import { isAdmin, type Actor } from '@/domain/actor';
+import { isInventoryWorker, type Actor } from '@/domain/actor';
 import { errors } from '@/domain/errors';
 import {
   applyInventoryCount,
@@ -27,6 +26,7 @@ import {
 } from '@/domain/inventory-count';
 import { getItem } from '@/domain/items';
 import { resolveScannedBarcode } from '@/domain/operations';
+import { listItemsForActor } from './items';
 import { FieldValidator, type RawFormValue } from './parse';
 import { failFields, forbidden, runAction, type ActionResult } from './result';
 
@@ -76,6 +76,16 @@ export interface CountScanTargetView {
   countedQuantity: number | null;
 }
 
+export interface CountSearchResultView {
+  itemId: number;
+  name: string;
+  internalCode: string;
+  sku: string | null;
+  referenceNumber: string | null;
+  currentQuantity: number;
+  unitOfMeasurement: string;
+}
+
 function toLineView(line: InventoryCountLineRow, item: ItemRow | undefined): CountLineView {
   return {
     id: line.id,
@@ -116,13 +126,13 @@ function toStateView(db: AppDatabase, countId: number): InventoryCountStateView 
  * Состояние читается из БД при каждом заходе на страницу, как у активной
  * операции (§8.2): всё введённое хранится на сервере, поэтому refresh, закрытие
  * вкладки и перезапуск сервера ничего не теряют. `undefined` — черновика нет
- * либо запрашивает не Admin.
+ * либо запрашивает не Inventory worker.
  */
 export function findDraftCountForActor(
   db: AppDatabase,
   actor: Actor,
 ): InventoryCountStateView | undefined {
-  if (!isAdmin(actor)) return undefined;
+  if (!isInventoryWorker(actor)) return undefined;
   const draft = findDraftInventoryCount(db);
   return draft ? toStateView(db, draft.id) : undefined;
 }
@@ -132,7 +142,7 @@ export function getCountStateForActor(
   actor: Actor,
   countId: number,
 ): InventoryCountStateView | undefined {
-  if (!isAdmin(actor)) return undefined;
+  if (!isInventoryWorker(actor)) return undefined;
   const count = getInventoryCount(db, countId);
   return count ? toStateView(db, count.id) : undefined;
 }
@@ -143,7 +153,7 @@ export function startInventoryCountAction(
   db: AppDatabase,
   actor: Actor,
 ): ActionResult<InventoryCountStateView> {
-  if (!isAdmin(actor)) return forbidden('start inventory count');
+  if (!isInventoryWorker(actor)) return forbidden('start inventory count');
 
   return runAction(() => {
     // §5.10 не предусматривает двух одновременных инвентаризаций: незакрытый
@@ -162,6 +172,31 @@ export interface CountScanInput {
   barcode?: RawFormValue;
 }
 
+function openCountItem(
+  db: AppDatabase,
+  countId: number,
+  itemId: number,
+): CountScanTargetView {
+  const count = getInventoryCount(db, countId);
+  if (!count) throw errors.countNotFound();
+  if (count.status !== 'draft') throw errors.countNotDraft(count.status);
+
+  const item = getItem(db, itemId);
+  if (!item) throw errors.itemNotFound(itemId);
+  if (item.status !== 'active') throw errors.itemInactive(item.name);
+
+  const existing = listCountLines(db, countId).find((line) => line.itemId === item.id);
+
+  return {
+    itemId: item.id,
+    name: item.name,
+    internalCode: item.internalCode,
+    unitOfMeasurement: item.unitOfMeasurement,
+    expectedQuantity: item.currentQuantity,
+    countedQuantity: existing?.countedQuantity ?? null,
+  };
+}
+
 /**
  * Скан в режиме инвентаризации: показать предмет и ожидаемое количество.
  *
@@ -175,7 +210,7 @@ export function scanForCountAction(
   actor: Actor,
   input: CountScanInput,
 ): ActionResult<CountScanTargetView> {
-  if (!isAdmin(actor)) return forbidden('record inventory count');
+  if (!isInventoryWorker(actor)) return forbidden('record inventory count');
 
   const v = new FieldValidator();
   const countId = v.requiredInteger('countId', input.countId, 'Inventory count', { min: 1 });
@@ -183,10 +218,6 @@ export function scanForCountAction(
   if (v.hasErrors) return failFields(v.errors);
 
   return runAction(() => {
-    const count = getInventoryCount(db, countId);
-    if (!count) throw errors.countNotFound();
-    if (count.status !== 'draft') throw errors.countNotDraft(count.status);
-
     const target = resolveScannedBarcode(db, barcode);
     if (target.kind === 'pack') {
       throw errors.validationFailed(
@@ -195,16 +226,63 @@ export function scanForCountAction(
       );
     }
 
-    const existing = listCountLines(db, countId).find((line) => line.itemId === target.item.id);
+    return openCountItem(db, countId, target.item.id);
+  });
+}
 
-    return {
-      itemId: target.item.id,
-      name: target.item.name,
-      internalCode: target.item.internalCode,
-      unitOfMeasurement: target.item.unitOfMeasurement,
-      expectedQuantity: target.item.currentQuantity,
-      countedQuantity: existing?.countedQuantity ?? null,
-    };
+export interface SelectCountItemInput {
+  countId: RawFormValue;
+  itemId: RawFormValue;
+}
+
+/** Ручной выбор проходит ту же проверку черновика, что и сканирование. */
+export function selectItemForCountAction(
+  db: AppDatabase,
+  actor: Actor,
+  input: SelectCountItemInput,
+): ActionResult<CountScanTargetView> {
+  if (!isInventoryWorker(actor)) return forbidden('record inventory count');
+
+  const v = new FieldValidator();
+  const countId = v.requiredInteger('countId', input.countId, 'Inventory count', { min: 1 });
+  const itemId = v.requiredInteger('itemId', input.itemId, 'Item', { min: 1 });
+  if (v.hasErrors) return failFields(v.errors);
+
+  return runAction(() => openCountItem(db, countId, itemId));
+}
+
+export interface SearchCountItemsInput {
+  countId: RawFormValue;
+  query?: RawFormValue;
+}
+
+/** Поиск по названию, внутреннему коду, SKU и reference number. */
+export function searchItemsForCountAction(
+  db: AppDatabase,
+  actor: Actor,
+  input: SearchCountItemsInput,
+): ActionResult<CountSearchResultView[]> {
+  if (!isInventoryWorker(actor)) return forbidden('record inventory count');
+
+  const v = new FieldValidator();
+  const countId = v.requiredInteger('countId', input.countId, 'Inventory count', { min: 1 });
+  const query = v.optionalText('query', input.query, 120) ?? '';
+  if (v.hasErrors) return failFields(v.errors);
+
+  return runAction(() => {
+    const count = getInventoryCount(db, countId);
+    if (!count) throw errors.countNotFound();
+    if (count.status !== 'draft') throw errors.countNotDraft(count.status);
+
+    return listItemsForActor(db, actor, { q: query, limit: 25 }).items.map((item) => ({
+      itemId: item.id,
+      name: item.name,
+      internalCode: item.internalCode,
+      sku: item.sku,
+      referenceNumber: item.referenceNumber,
+      currentQuantity: item.currentQuantity,
+      unitOfMeasurement: item.unitOfMeasurement,
+    }));
   });
 }
 
@@ -236,7 +314,7 @@ export function recordCountLineAction(
   actor: Actor,
   input: RecordCountLineInput,
 ): ActionResult<RecordCountLineResult> {
-  if (!isAdmin(actor)) return forbidden('record inventory count');
+  if (!isInventoryWorker(actor)) return forbidden('record inventory count');
 
   const v = new FieldValidator();
   const countId = v.requiredInteger('countId', input.countId, 'Inventory count', { min: 1 });
@@ -290,7 +368,7 @@ export function applyInventoryCountAction(
   actor: Actor,
   countId: number,
 ): ActionResult<ApplyCountResultView> {
-  if (!isAdmin(actor)) return forbidden('apply inventory count');
+  if (!isInventoryWorker(actor)) return forbidden('apply inventory count');
 
   return runAction(() => {
     const before = toStateView(db, countId);
@@ -314,7 +392,7 @@ export function cancelInventoryCountAction(
   actor: Actor,
   countId: number,
 ): ActionResult<{ countId: number }> {
-  if (!isAdmin(actor)) return forbidden('cancel inventory count');
+  if (!isInventoryWorker(actor)) return forbidden('cancel inventory count');
 
   return runAction(() => {
     cancelInventoryCount(db, actor, countId);

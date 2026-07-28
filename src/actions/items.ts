@@ -20,7 +20,7 @@ import {
   type EntityStatus,
   type ItemRow,
 } from '@/db/schema';
-import { isAdmin, type Actor } from '@/domain/actor';
+import { isAdmin, isInventoryWorker, type Actor } from '@/domain/actor';
 import {
   AVAILABILITY_FILTERS,
   adjustStock,
@@ -365,13 +365,14 @@ export function receiveStockAction(
   actor: Actor,
   input: ReceiveStockFormInput,
 ): ActionResult<StockChangeResult> {
-  if (!isAdmin(actor)) return forbidden('receive stock');
+  if (!isInventoryWorker(actor)) return forbidden('receive stock');
 
   const v = new FieldValidator();
   const itemId = v.requiredInteger('itemId', input.itemId, 'Item', { min: 1 });
   const quantity = v.requiredInteger('quantity', input.quantity, 'Quantity received', { min: 1 });
   const clientEventId = v.requiredText('clientEventId', input.clientEventId, 'Request id', 120);
   const rawCost = v.text(input.newCostPerUnit);
+  if (rawCost && !canSeeCost(db, actor)) return forbidden('change receipt cost');
   const newUnitCostCents = rawCost
     ? v.requiredCents('newCostPerUnit', rawCost, 'New cost per unit')
     : null;

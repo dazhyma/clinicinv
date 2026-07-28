@@ -19,9 +19,10 @@ import {
   startInventoryCount,
   upsertCountLine,
 } from '@/domain/inventory-count';
+import { SETTING_KEYS, setSetting } from '@/domain/settings';
 import { FIXTURES, makeItem, nextClientEventId, setupTestDb } from './helpers';
 
-describe('Staff не может выполнять Admin-действия', () => {
+describe('Staff не получает полный Admin-доступ', () => {
   it('создание предмета отклоняется', () => {
     const ctx = setupTestDb();
     expect(() =>
@@ -50,17 +51,15 @@ describe('Staff не может выполнять Admin-действия', () =
     expect(unchanged.currentUnitCostCents).toBe(300);
   });
 
-  it('Receive Stock и ручная корректировка отклоняются, остаток не меняется', () => {
+  it('Receive Stock разрешён, а ручная корректировка по-прежнему отклоняется', () => {
     const ctx = setupTestDb();
     const item = makeItem(ctx, FIXTURES.gauze);
 
-    expect(() =>
-      receiveStock(ctx.db, ctx.staff, {
-        itemId: item.id,
-        quantity: 20,
-        clientEventId: nextClientEventId('recv'),
-      }),
-    ).toThrow(/permission/i);
+    receiveStock(ctx.db, ctx.staff, {
+      itemId: item.id,
+      quantity: 20,
+      clientEventId: nextClientEventId('recv'),
+    });
 
     expect(() =>
       adjustStock(ctx.db, ctx.staff, {
@@ -71,7 +70,33 @@ describe('Staff не может выполнять Admin-действия', () =
       }),
     ).toThrow(/permission/i);
 
+    expect(getItem(ctx.db, item.id)!.currentQuantity).toBe(30);
+  });
+
+  it('себестоимость поставки Staff меняет только при включённой настройке', () => {
+    const ctx = setupTestDb();
+    const item = makeItem(ctx, FIXTURES.gauze);
+
+    expect(() =>
+      receiveStock(ctx.db, ctx.staff, {
+        itemId: item.id,
+        quantity: 5,
+        newUnitCostCents: 425,
+        clientEventId: nextClientEventId('recv'),
+      }),
+    ).toThrow(/permission/i);
     expect(getItem(ctx.db, item.id)!.currentQuantity).toBe(10);
+    expect(getItem(ctx.db, item.id)!.currentUnitCostCents).toBe(300);
+
+    setSetting(ctx.db, SETTING_KEYS.staffCanSeeCost, 'true');
+    receiveStock(ctx.db, ctx.staff, {
+      itemId: item.id,
+      quantity: 5,
+      newUnitCostCents: 425,
+      clientEventId: nextClientEventId('recv'),
+    });
+    expect(getItem(ctx.db, item.id)!.currentQuantity).toBe(15);
+    expect(getItem(ctx.db, item.id)!.currentUnitCostCents).toBe(425);
   });
 
   it('создание и изменение пака отклоняются', () => {
@@ -94,21 +119,22 @@ describe('Staff не может выполнять Admin-действия', () =
     );
   });
 
-  it('инвентаризация во всех фазах отклоняется', () => {
+  it('Staff может провести инвентаризацию во всех фазах', () => {
     const ctx = setupTestDb();
     const item = makeItem(ctx, FIXTURES.gauze);
-    const count = startInventoryCount(ctx.db, ctx.admin);
+    const count = startInventoryCount(ctx.db, ctx.staff);
 
-    expect(() => startInventoryCount(ctx.db, ctx.staff)).toThrow(/permission/i);
-    expect(() =>
-      upsertCountLine(ctx.db, ctx.staff, {
-        countId: count.id,
-        itemId: item.id,
-        countedQuantity: 7,
-      }),
-    ).toThrow(/permission/i);
-    expect(() => applyInventoryCount(ctx.db, ctx.staff, count.id)).toThrow(/permission/i);
-    expect(() => cancelInventoryCount(ctx.db, ctx.staff, count.id)).toThrow(/permission/i);
+    upsertCountLine(ctx.db, ctx.staff, {
+      countId: count.id,
+      itemId: item.id,
+      countedQuantity: 7,
+    });
+    applyInventoryCount(ctx.db, ctx.staff, count.id);
+    expect(getItem(ctx.db, item.id)!.currentQuantity).toBe(7);
+
+    const cancelled = startInventoryCount(ctx.db, ctx.staff);
+    cancelInventoryCount(ctx.db, ctx.staff, cancelled.id);
+    expect(getItem(ctx.db, item.id)!.currentQuantity).toBe(7);
   });
 
   it('Void операции отклоняется', () => {

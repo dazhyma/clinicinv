@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { findDraftCountForActor } from '@/actions/inventory-count';
-import { requirePageAdmin } from '@/auth/guards';
+import { requirePage } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import { AppHeader } from '../../_components/app-header';
 import { CountScreen } from '../_components/count-screen';
@@ -11,17 +11,16 @@ export const dynamic = 'force-dynamic';
 /**
  * Inventory Count (§5.1, §5.10).
  *
- * Только Admin: §3.2 не даёт Staff корректировать остатки вручную, а
- * инвентаризация — это ручная корректировка. Страница закрыта guard'ом
- * `requirePageAdmin()`, но защитой служит не он: каждое действие проверяет роль
- * на сервере повторно, а домен — третий раз (D-10).
+ * Admin и Staff работают с одним общим черновиком. Каждое действие проверяет
+ * узкое право Inventory Count на сервере и в домене; остальные ручные
+ * корректировки для Staff по-прежнему запрещены.
  *
  * Черновик читается из БД при каждом заходе, поэтому незавершённая
  * инвентаризация переживает обновление страницы, закрытие вкладки и перезапуск
  * сервера (§5.10). Ничего не хранится только на странице.
  */
 export default async function InventoryCountPage() {
-  const { account, actor } = await requirePageAdmin();
+  const { account, actor } = await requirePage();
   const draft = findDraftCountForActor(getDb(), actor);
 
   return (

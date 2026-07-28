@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { listItemsForActor } from '@/actions/items';
 import { withBasePath } from '@/base-path';
-import { requirePageAdmin } from '@/auth/guards';
+import { requirePage } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import { AppHeader } from '../../_components/app-header';
 import { ItemPhoto } from '../../_components/item-photo';
@@ -21,7 +21,7 @@ export default async function ReceiveStockPickerPage({
 }: {
   searchParams: Promise<{ q?: string; camera?: string }>;
 }) {
-  const { account, actor } = await requirePageAdmin();
+  const { account, actor } = await requirePage();
   const { q = '', camera = '' } = await searchParams;
 
   const result = q.trim()

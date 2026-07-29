@@ -431,22 +431,27 @@ export const BarcodeCapture = forwardRef<BarcodeCaptureHandle, BarcodeCapturePro
             role="dialog"
             aria-modal="true"
             aria-label="Camera barcode scanner"
-            className="fixed inset-0 z-50 overflow-hidden bg-black"
+            className="fixed inset-x-0 top-0 z-50 flex h-[100dvh] flex-col overflow-hidden bg-black"
           >
+            {/*
+             * Высота задана в dvh, а не через inset-0.
+             *
+             * На мобильных `position: fixed; inset: 0` растягивается по БОЛЬШОМУ
+             * вьюпорту, то есть заходит под сворачиваемую панель браузера с
+             * адресом. Из-за этого прижатые к низу кнопки оказывались за панелью
+             * Safari, и нажать подтверждение было невозможно. `100dvh` считается
+             * по видимой области и меняется вместе с панелью браузера.
+             */}
             <video
               ref={videoRef}
               autoPlay
               muted
               playsInline
-              className="h-full w-full object-cover"
+              className="absolute inset-0 h-full w-full object-cover"
             />
             <canvas ref={canvasRef} className="hidden" aria-hidden="true" />
 
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-5 pb-28">
-              <div className="h-[30dvh] max-h-72 min-h-36 w-full max-w-2xl rounded-3xl border-4 border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.42)]" />
-            </div>
-
-            <div className="absolute inset-x-0 top-0 flex items-center justify-between gap-3 bg-gradient-to-b from-black/80 to-transparent p-4 pb-12 text-white">
+            <div className="relative z-20 flex items-center justify-between gap-3 bg-gradient-to-b from-black/80 to-transparent p-4 pb-8 text-white">
               <div>
                 <p className="text-xl font-bold">Place one barcode inside the frame</p>
                 <p className="text-sm text-white/80">
@@ -456,14 +461,22 @@ export const BarcodeCapture = forwardRef<BarcodeCaptureHandle, BarcodeCapturePro
               <button
                 type="button"
                 onClick={closeCamera}
-                className="pointer-events-auto min-h-12 rounded-xl bg-black/60 px-5 text-lg font-semibold ring-1 ring-white/50"
+                className="min-h-12 rounded-xl bg-black/60 px-5 text-lg font-semibold ring-1 ring-white/50"
               >
                 Cancel
               </button>
             </div>
 
+            {/*
+             * Рамка прицела в потоке, а не absolute: панель подтверждения встаёт
+             * сразу под ней, а не у нижнего края экрана, где её накрывает браузер.
+             */}
+            <div className="pointer-events-none relative z-10 flex shrink-0 justify-center px-5">
+              <div className="h-[30dvh] max-h-72 min-h-36 w-full max-w-2xl rounded-3xl border-4 border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.42)]" />
+            </div>
+
             {phase !== 'idle' ? (
-              <div className="absolute inset-x-0 bottom-0 max-h-[64dvh] overflow-y-auto p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-5">
+              <div className="relative z-20 mt-3 flex-1 overflow-y-auto px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-5">
                 {panel}
               </div>
             ) : null}

@@ -169,16 +169,35 @@ export function BulkLabelSelection({
         </div>
       </section>
 
+      {/*
+       * Панель действий закреплена вверху: список позиций длинный (при полном
+       * складе это десяток страниц), и Create Label Sheet внизу страницы
+       * заставлял отматывать до конца после каждого изменения выбора.
+       *
+       * Счётчик этикеток и предупреждение о лимите держим здесь же: кнопка
+       * блокируется именно по нему, и объяснение обязано быть рядом с кнопкой,
+       * а не в секции настроек, до которой ещё надо доскроллить (§14.4).
+       */}
       <section className="sticky top-2 z-20 rounded-2xl bg-slate-900 p-4 text-white shadow-lg">
         <div className="flex flex-wrap items-center gap-3">
-          <strong className="mr-auto text-xl">
-            {selectedCount} {selectedCount === 1 ? 'item' : 'items'} selected
-          </strong>
+          <span className="mr-auto">
+            <strong className="text-xl">
+              {selectedCount} {selectedCount === 1 ? 'item' : 'items'} selected
+            </strong>
+            <span
+              className={`ml-2 ${totalLabels > MAX_BULK_LABELS ? 'font-semibold text-red-300' : 'text-slate-300'}`}
+            >
+              · {totalLabels.toLocaleString()} labels
+              {totalLabels > MAX_BULK_LABELS
+                ? ` — reduce to ${MAX_BULK_LABELS.toLocaleString()} or fewer`
+                : ''}
+            </span>
+          </span>
           <button
             type="button"
             onClick={selectAll}
             disabled={filtered.length === 0}
-            className="rounded-xl bg-white px-5 py-3 font-semibold text-slate-900 disabled:opacity-50"
+            className="rounded-xl border border-slate-500 px-5 py-3 font-semibold disabled:opacity-50"
           >
             Select All ({filtered.length})
           </button>
@@ -189,6 +208,14 @@ export function BulkLabelSelection({
             className="rounded-xl border border-slate-500 px-5 py-3 font-semibold disabled:opacity-50"
           >
             Clear Selection
+          </button>
+          <button
+            type="button"
+            onClick={createSheet}
+            disabled={generating || selectedCount === 0 || totalLabels > MAX_BULK_LABELS}
+            className="rounded-xl bg-white px-6 py-3 text-lg font-semibold text-slate-900 disabled:opacity-50"
+          >
+            {generating ? 'Generating…' : 'Create Label Sheet'}
           </button>
         </div>
       </section>
@@ -341,14 +368,6 @@ export function BulkLabelSelection({
         </div>
       </section>
 
-      <button
-        type="button"
-        onClick={createSheet}
-        disabled={generating || selectedCount === 0 || totalLabels > MAX_BULK_LABELS}
-        className="rounded-xl bg-slate-900 px-8 py-4 text-xl font-semibold text-white disabled:opacity-50"
-      >
-        {generating ? 'Generating label sheet…' : 'Create Label Sheet'}
-      </button>
     </div>
   );
 }

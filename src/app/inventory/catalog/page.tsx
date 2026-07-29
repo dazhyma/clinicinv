@@ -85,16 +85,22 @@ export default async function InventoryCatalogPage({
         </p>
       ) : null}
 
-      {isAdmin ? (
-        <div className="mb-4">
+      <div className="mb-4 flex flex-wrap gap-3">
+        {isAdmin ? (
           <Link
             href="/inventory/items/new"
             className="rounded-xl bg-slate-900 px-6 py-3 text-lg font-semibold text-white"
           >
             Add New Item
           </Link>
-        </div>
-      ) : null}
+        ) : null}
+        <Link
+          href="/inventory/labels"
+          className="rounded-xl border-2 border-slate-900 bg-white px-6 py-3 text-lg font-semibold"
+        >
+          Print Labels
+        </Link>
+      </div>
 
       <div className="mb-5">
         <ItemFilters

@@ -73,6 +73,8 @@ function escapeXml(value: string): string {
 export interface LabelSvgOptions extends BarcodeSvgOptions {
   /** Свободное поле по краям в единицах viewBox (§5.6 — «небольшое свободное пространство»). */
   quietZone?: number;
+  /** Текст под штрихкодом; по умолчанию совпадает с закодированным значением. */
+  displayText?: string;
 }
 
 /**
@@ -86,6 +88,7 @@ export interface LabelSvgOptions extends BarcodeSvgOptions {
  */
 export function renderLabelSvg(value: string, options: LabelSvgOptions = {}): string {
   const text = requireValue(value);
+  const displayText = requireValue(options.displayText ?? text);
   const inner = renderBarcodeSvg(text, { ...options, includeText: false });
 
   const match = VIEW_BOX_PATTERN.exec(inner);
@@ -115,7 +118,7 @@ export function renderLabelSvg(value: string, options: LabelSvgOptions = {}): st
     `<text x="${width / 2}" y="${height - quietZone}"`,
     ` text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace"`,
     ` font-size="${fontSize}" letter-spacing="${Math.round(fontSize * 0.08)}" fill="#000000">`,
-    escapeXml(text),
+    escapeXml(displayText),
     '</text>',
     '</svg>',
   ].join('');

@@ -55,8 +55,9 @@ for (const row of rows) {
     }
   }
   try {
-    const { sourceRow: _sourceRow, ...input } = row;
-    createItem(db, actor, input);
+    // Лишний ключ sourceRow (номер строки Excel — для диагностики) безвреден:
+    // createItem читает поля по именам и в БД пишет только известные ему.
+    createItem(db, actor, row);
     created += 1;
   } catch (error) {
     failed.push({ sku: sku ?? row.name, error: error instanceof Error ? error.message : String(error) });

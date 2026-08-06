@@ -27,7 +27,6 @@ export interface BarcodeConfirmationView {
   name: string;
   internalCode: string;
   photoUrl: string | null;
-  sku: string | null;
   referenceNumber: string | null;
   currentQuantity: number | null;
   unitOfMeasurement: string | null;
@@ -52,7 +51,6 @@ export function resolveBarcodeForConfirmation(
         name: target.item.name,
         internalCode: target.item.internalCode,
         photoUrl: target.item.photoUrl,
-        sku: target.item.sku,
         referenceNumber: target.item.referenceNumber,
         currentQuantity: target.item.currentQuantity,
         unitOfMeasurement: target.item.unitOfMeasurement,
@@ -73,7 +71,6 @@ export function resolveBarcodeForConfirmation(
       name: target.pack.name,
       internalCode: target.pack.internalCode,
       photoUrl: target.pack.photoUrl,
-      sku: null,
       referenceNumber: null,
       currentQuantity: null,
       unitOfMeasurement: null,

@@ -11,9 +11,11 @@
  *      выданный системой, — принадлежность проверяется по реестру штрихкодов.
  */
 import { NextResponse, type NextRequest } from 'next/server';
+import { eq } from 'drizzle-orm';
 import { requireActor } from '@/auth/guards';
 import { getDb } from '@/db/client';
-import { renderBarcodePng, renderLabelSvg } from '@/domain/barcode';
+import { items, packs } from '@/db/schema';
+import { renderInventoryLabelPng, renderInventoryLabelSvg } from '@/domain/barcode';
 import { findBarcodeOwner, normalizeScannedCode } from '@/domain/codes';
 import { isDomainError } from '@/domain/errors';
 
@@ -32,7 +34,9 @@ export async function GET(request: NextRequest, context: { params: Promise<{ cod
   const { code } = await context.params;
   const value = normalizeScannedCode(decodeURIComponent(code));
 
-  if (!findBarcodeOwner(getDb(), value)) {
+  const db = getDb();
+  const owner = findBarcodeOwner(db, value);
+  if (!owner) {
     // §14.4: конкретная формулировка, та же, что видит сканер.
     return NextResponse.json({ error: 'Barcode not found' }, { status: 404 });
   }
@@ -44,14 +48,31 @@ export async function GET(request: NextRequest, context: { params: Promise<{ cod
     'Content-Disposition': `attachment; filename="${value}.${format}"`,
   };
 
+  const label =
+    owner.ownerType === 'item'
+      ? db
+          .select({ name: items.name, internalCode: items.internalCode, referenceNumber: items.referenceNumber })
+          .from(items)
+          .where(eq(items.id, owner.ownerId))
+          .get()
+      : db
+          .select({ name: packs.name, internalCode: packs.internalCode })
+          .from(packs)
+          .where(eq(packs.id, owner.ownerId))
+          .get();
+
+  if (!label || label.internalCode !== value) {
+    return NextResponse.json({ error: 'Barcode not found' }, { status: 404 });
+  }
+
   if (format === 'png') {
-    const png = await renderBarcodePng(value);
+    const png = await renderInventoryLabelPng(label);
     return new NextResponse(new Uint8Array(png), {
       headers: { ...headers, 'Content-Type': 'image/png', 'Content-Length': String(png.byteLength) },
     });
   }
 
-  return new NextResponse(renderLabelSvg(value), {
+  return new NextResponse(renderInventoryLabelSvg(label), {
     headers: { ...headers, 'Content-Type': 'image/svg+xml; charset=utf-8' },
   });
 }

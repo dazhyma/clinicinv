@@ -575,7 +575,6 @@ function ConfirmationPanel({
             ) : null}
           </div>
           <p className="mt-1 font-mono text-base text-slate-600">Code: {target.internalCode}</p>
-          {target.sku ? <p className="text-base text-slate-600">SKU: {target.sku}</p> : null}
           {target.referenceNumber ? (
             <p className="text-base text-slate-600">Reference: {target.referenceNumber}</p>
           ) : null}

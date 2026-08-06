@@ -672,11 +672,11 @@ describe('Новая операция не перезаписывает суще
 // --- §7.8: ручной поиск и §3.2: видимость стоимости -------------------------
 
 describe('Ручной поиск и видимость стоимости', () => {
-  it('находит предмет по названию, внутреннему коду, SKU и reference number', () => {
+  it('находит предмет по названию, Item Code и reference number', () => {
     const ctx = setupTestDb();
-    const gauze = makeItem(ctx, FIXTURES.gauze, { sku: 'SKU-77', referenceNumber: 'REF-88' });
+    const gauze = makeItem(ctx, FIXTURES.gauze, { referenceNumber: 'REF-88' });
 
-    for (const term of ['Gauze', gauze.internalCode, 'SKU-77', 'REF-88']) {
+    for (const term of ['Gauze', gauze.internalCode, 'REF-88']) {
       const found = expectSuccess<{ itemId: number }[]>(
         searchItemsForOperationAction(ctx.db, ctx.staff, term),
       ).data;

@@ -86,7 +86,6 @@ export interface OperationLineView {
   itemId: number;
   name: string;
   internalCode: string;
-  sku: string | null;
   referenceNumber: string | null;
   unitOfMeasurement: string;
   quantity: number;
@@ -142,7 +141,6 @@ function toLineView(
     itemId: line.itemId,
     name: line.itemNameSnapshot,
     internalCode: line.internalCodeSnapshot,
-    sku: line.skuSnapshot,
     referenceNumber: line.referenceNumberSnapshot,
     unitOfMeasurement: line.unitOfMeasurementSnapshot,
     quantity: line.quantity,
@@ -440,14 +438,13 @@ export interface ItemSearchResultView {
   itemId: number;
   name: string;
   internalCode: string;
-  sku: string | null;
   referenceNumber: string | null;
   unitOfMeasurement: string;
   currentQuantity: number;
   unitCostFormatted?: string;
 }
 
-/** §7.8: поиск по названию, внутреннему коду, SKU и reference/catalog number. */
+/** Поиск по названию, системному Item Code и reference/catalog number. */
 export function searchItemsForOperationAction(
   db: AppDatabase,
   actor: Actor,
@@ -467,7 +464,6 @@ export function searchItemsForOperationAction(
         itemId: item.id,
         name: item.name,
         internalCode: item.internalCode,
-        sku: item.sku,
         referenceNumber: item.referenceNumber,
         unitOfMeasurement: item.unitOfMeasurement,
         currentQuantity: item.currentQuantity,
@@ -681,8 +677,8 @@ export function voidOperationAction(
 /**
  * Строка сводки (§12.3).
  *
- * Полей ровно столько, сколько перечисляет §12.3: название, SKU или reference
- * number, использованное количество и — при необходимости — стоимость. Ничего
+ * Поля: название, reference number, использованное количество и — при
+ * необходимости — стоимость. Ничего
  * «на всякий случай» здесь появиться не может: §18.3 и FR-125 запрещают любые
  * поля, куда можно вписать пациента, а лишнее поле в сводке для ручного
  * переноса — ровно такое место.
@@ -690,9 +686,9 @@ export function voidOperationAction(
 export interface OperationSummaryLine {
   itemId: number;
   name: string;
-  /** SKU, а при его отсутствии — reference/catalog number (§12.3). */
+  /** Reference/catalog number производителя, если он задан. */
   reference: string | null;
-  referenceKind: 'SKU' | 'Ref' | null;
+  referenceKind: 'Ref' | null;
   quantity: number;
   unitOfMeasurement: string;
   unitCostFormatted?: string;
@@ -716,7 +712,7 @@ const SUMMARY_COLUMN_SEPARATOR = '\t';
 function summaryText(view: Omit<OperationSummaryView, 'text'>): string {
   const rows: string[] = [`Case ${view.caseCode}`];
 
-  const header = ['Item', 'SKU / Ref', 'Qty'];
+  const header = ['Item', 'Reference', 'Qty'];
   if (view.showCost) header.push('Unit cost', 'Line total');
   rows.push(header.join(SUMMARY_COLUMN_SEPARATOR));
 
@@ -786,8 +782,8 @@ export function getOperationSummary(
       line: {
         itemId: row.itemId,
         name: row.itemNameSnapshot,
-        reference: row.skuSnapshot ?? row.referenceNumberSnapshot,
-        referenceKind: row.skuSnapshot ? 'SKU' : row.referenceNumberSnapshot ? 'Ref' : null,
+        reference: row.referenceNumberSnapshot,
+        referenceKind: row.referenceNumberSnapshot ? 'Ref' : null,
         quantity: row.quantity,
         unitOfMeasurement: row.unitOfMeasurementSnapshot,
       },

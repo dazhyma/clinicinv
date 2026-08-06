@@ -105,7 +105,7 @@ export function CountManualSearchDialog({
         </div>
 
         <label htmlFor="count-manual-search" className="sr-only">
-          Search by name, internal code, SKU or reference number
+          Search by name, Item Code or reference number
         </label>
         <input
           id="count-manual-search"
@@ -114,7 +114,7 @@ export function CountManualSearchDialog({
           autoComplete="off"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Name, internal code, SKU or reference number"
+          placeholder="Name, Item Code or reference number"
           className="w-full rounded-xl border border-slate-300 px-4 py-4 text-xl"
         />
 
@@ -140,7 +140,6 @@ export function CountManualSearchDialog({
                     <p className="text-xl font-semibold">{item.name}</p>
                     <p className="font-mono text-sm text-slate-500">
                       {item.internalCode}
-                      {item.sku ? ` · SKU ${item.sku}` : ''}
                       {item.referenceNumber ? ` · Ref ${item.referenceNumber}` : ''}
                     </p>
                     <p className="text-base text-slate-600">

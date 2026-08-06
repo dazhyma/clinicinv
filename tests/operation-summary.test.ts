@@ -56,7 +56,7 @@ function scan(ctx: TestContext, operationId: number, barcode: string, actor = ct
 describe('§12.2: карточка завершённой операции показывает снимки', () => {
   it('изменение текущей цены предмета после Finish не меняет ни строки, ни итог', () => {
     const ctx = setupTestDb();
-    const gauze = makeItem(ctx, FIXTURES.gauze, { sku: 'SKU-1' }); // $3.00
+    const gauze = makeItem(ctx, FIXTURES.gauze, { referenceNumber: 'REF-1' }); // $3.00
 
     const operation = startOperation(ctx);
     scan(ctx, operation.operationId, gauze.barcodeValue);
@@ -74,13 +74,13 @@ describe('§12.2: карточка завершённой операции по�
     updateItem(ctx.db, ctx.admin, gauze.id, {
       currentUnitCostCents: 425,
       name: 'Gauze 4x4 sterile',
-      sku: 'SKU-NEW',
+      referenceNumber: 'REF-NEW',
     });
     expect(getItem(ctx.db, gauze.id)!.currentUnitCostCents).toBe(425);
 
     const after = getOperationState(ctx.db, ctx.admin, operation.operationId)!;
     expect(after.lines[0]!.name).toBe('Gauze 4x4');
-    expect(after.lines[0]!.sku).toBe('SKU-1');
+    expect(after.lines[0]!.referenceNumber).toBe('REF-1');
     expect(after.lines[0]!.unitCostFormatted).toBe('$3.00');
     expect(after.lines[0]!.lineTotalFormatted).toBe('$6.00');
     expect(after.totalCostFormatted).toBe('$6.00');
@@ -89,7 +89,7 @@ describe('§12.2: карточка завершённой операции по�
     // Сводка §12.3 читает те же снимки.
     const summary = getOperationSummary(ctx.db, ctx.admin, operation.operationId)!;
     expect(summary.lines[0]!.name).toBe('Gauze 4x4');
-    expect(summary.lines[0]!.reference).toBe('SKU-1');
+    expect(summary.lines[0]!.reference).toBe('REF-1');
     expect(summary.lines[0]!.unitCostFormatted).toBe('$3.00');
     expect(summary.totalCostFormatted).toBe('$6.00');
   });
@@ -133,7 +133,7 @@ describe('§12.2: карточка завершённой операции по�
 describe('§12.3: сводка для Symplast', () => {
   it('сводка не содержит полей стоимости при выключенном staff_can_see_cost', () => {
     const ctx = setupTestDb();
-    const gauze = makeItem(ctx, FIXTURES.gauze, { sku: 'SKU-1' });
+    const gauze = makeItem(ctx, FIXTURES.gauze, { referenceNumber: 'REF-1' });
 
     const operation = startOperation(ctx);
     scan(ctx, operation.operationId, gauze.barcodeValue);
@@ -150,7 +150,7 @@ describe('§12.3: сводка для Symplast', () => {
     expect(staffSummary.text).not.toContain('Total');
     // Рабочие данные при этом на месте: §12.3 адресован в первую очередь Staff.
     expect(staffSummary.lines[0]!.name).toBe('Gauze 4x4');
-    expect(staffSummary.lines[0]!.reference).toBe('SKU-1');
+    expect(staffSummary.lines[0]!.reference).toBe('REF-1');
     expect(staffSummary.lines[0]!.quantity).toBe(1);
 
     // Admin видит стоимость всегда.
@@ -168,7 +168,7 @@ describe('§12.3: сводка для Symplast', () => {
 
   it('сводка не содержит ни одного поля, связанного с пациентом', () => {
     const ctx = setupTestDb();
-    const gauze = makeItem(ctx, FIXTURES.gauze, { sku: 'SKU-1' });
+    const gauze = makeItem(ctx, FIXTURES.gauze, { referenceNumber: 'REF-1' });
 
     const operation = startOperation(ctx);
     scan(ctx, operation.operationId, gauze.barcodeValue);

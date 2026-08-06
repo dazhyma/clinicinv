@@ -60,9 +60,9 @@ export default async function InventoryHistoryDetailPage({
               <div className="min-w-48 flex-1">
                 <p className="text-xl font-semibold">{line.name}</p>
                 <p className="font-mono text-sm text-slate-500">{line.internalCode}</p>
-                {line.sku || line.referenceNumber ? (
+                {line.referenceNumber ? (
                   <p className="text-sm text-slate-600">
-                    {line.sku ? `SKU ${line.sku}` : `Ref ${line.referenceNumber}`}
+                    Ref {line.referenceNumber}
                   </p>
                 ) : null}
               </div>

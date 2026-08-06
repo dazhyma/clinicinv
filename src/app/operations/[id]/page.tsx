@@ -203,7 +203,7 @@ function OperationHeaderCard({ state }: { state: OperationStateView }) {
  * Строка карточки (§12.2): предмет, источник добавления (отдельный скан или
  * пак), количество, сохранённая стоимость единицы и сумма строки.
  *
- * Название, внутренний код, SKU и стоимость — снимки на момент добавления
+ * Название, Item Code, reference number и стоимость — снимки на момент добавления
  * (§11.2, §18.15): предмет мог быть переименован, подорожать или вовсе исчезнуть
  * из состава пака, и на этой странице это ничего не меняет.
  */
@@ -214,8 +214,7 @@ function OperationLineRow({ line }: { line: OperationLineView }) {
         <p className="text-lg font-semibold">{line.name}</p>
         <p className="text-base text-slate-600">
           <span className="font-mono">{line.internalCode}</span>
-          {line.sku ? ` · SKU ${line.sku}` : ''}
-          {!line.sku && line.referenceNumber ? ` · Ref ${line.referenceNumber}` : ''}
+          {line.referenceNumber ? ` · Ref ${line.referenceNumber}` : ''}
         </p>
         <span
           className={`mt-1 inline-block rounded-full px-3 py-1 text-sm font-semibold ${

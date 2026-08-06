@@ -49,14 +49,14 @@ export function ItemFilters({
       <div className="flex flex-col gap-3 sm:flex-row">
         <div className="flex-1">
           <label htmlFor="q" className="sr-only">
-            Search items by name, internal code, SKU or reference number
+            Search items by name, Item Code or reference number
           </label>
           <input
             id="q"
             name="q"
             type="search"
             defaultValue={values.q}
-            placeholder="Search name, internal code, SKU, reference number"
+            placeholder="Search name, Item Code, reference number"
             className="w-full rounded-lg border border-slate-300 px-4 py-3 text-lg"
           />
         </div>

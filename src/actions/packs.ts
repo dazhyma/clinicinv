@@ -42,7 +42,6 @@ export interface PackComponentView {
   itemId: number;
   name: string;
   internalCode: string;
-  sku: string | null;
   referenceNumber: string | null;
   unitOfMeasurement: string;
   /** Сколько единиц предмета входит в пак. */
@@ -90,7 +89,6 @@ export function toPackView(
       itemId: component.item.id,
       name: component.item.name,
       internalCode: component.item.internalCode,
-      sku: component.item.sku,
       referenceNumber: component.item.referenceNumber,
       unitOfMeasurement: component.item.unitOfMeasurement,
       quantity: component.quantity,

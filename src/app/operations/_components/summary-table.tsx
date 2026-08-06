@@ -3,8 +3,8 @@ import type { OperationSummaryView } from '@/actions/operations';
 /**
  * Таблица сводки для Symplast (§12.3).
  *
- * Колонок ровно столько, сколько перечисляет §12.3: item name, SKU или
- * reference number, quantity used и — при необходимости — cost с общим итогом.
+ * Колонки: item name, reference number, quantity used и — при необходимости —
+ * cost с общим итогом.
  * Ни даты процедуры, ни свободного примечания, ни любого другого поля здесь нет
  * и быть не может: это форма, из которой переписывают вручную, и лишняя графа
  * стала бы местом для данных пациента (§2.4, §18.3, FR-125).
@@ -21,7 +21,7 @@ export function SummaryTable({ summary }: { summary: OperationSummaryView }) {
             Item
           </th>
           <th scope="col" className="py-2 pr-3 text-base font-semibold">
-            SKU / Ref
+            Reference
           </th>
           <th scope="col" className="py-2 pr-3 text-right text-base font-semibold">
             Qty

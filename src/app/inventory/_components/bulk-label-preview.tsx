@@ -190,23 +190,6 @@ export function BulkLabelPreview() {
                     padding: '1.5mm',
                   }}
                 >
-                  <p
-                    className="w-full shrink-0 overflow-hidden text-center leading-tight font-semibold text-black"
-                    style={{
-                      height: '6.5mm',
-                      fontSize:
-                        item.name.length > 70
-                          ? '1.7mm'
-                          : item.name.length > 45
-                            ? '2mm'
-                            : '2.5mm',
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                    }}
-                  >
-                    {item.name}
-                  </p>
                   <div
                     className="label-graphic min-h-0 w-full flex-1"
                     dangerouslySetInnerHTML={{ __html: item.labelSvg }}

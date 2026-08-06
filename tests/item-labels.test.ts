@@ -14,14 +14,14 @@ import { setupTestDb } from './helpers';
 function createZeroItem(
   ctx: ReturnType<typeof setupTestDb>,
   name: string,
-  sku?: string,
+  referenceNumber?: string,
 ) {
   return createItem(ctx.db, ctx.admin, {
     name,
     currentUnitCostCents: 100,
     unitOfMeasurement: 'each',
     initialQuantity: 0,
-    sku,
+    referenceNumber,
   });
 }
 
@@ -40,9 +40,9 @@ describe('Bulk item label selection', () => {
     ]);
   });
 
-  it('сортирует товары и кодирует SKU, но печатает под ним internal code', () => {
+  it('сортирует товары и использует Item Code во всём полном лейбле', () => {
     const ctx = setupTestDb();
-    const second = createZeroItem(ctx, 'Zeta', 'SKU-ZETA');
+    const second = createZeroItem(ctx, 'Zeta', 'REF-ZETA');
     const first = createZeroItem(ctx, 'Alpha');
 
     const model = resolveBulkLabels(ctx.db, ctx.staff, {
@@ -55,11 +55,13 @@ describe('Bulk item label selection', () => {
 
     expect(model.items.map((item) => item.name)).toEqual(['Alpha', 'Zeta']);
     expect(model.items[1]).toMatchObject({
-      barcodeValue: 'SKU-ZETA',
+      barcodeValue: second.internalCode,
       internalCode: second.internalCode,
+      referenceNumber: 'REF-ZETA',
       copies: 2,
     });
     expect(model.items[1]?.labelSvg).toContain(second.internalCode);
+    expect(model.items[1]?.labelSvg).toContain('Zeta (Ref: REF-ZETA)');
     expect(model.layout).toMatchObject({
       columns: 3,
       rows: 7,
@@ -124,7 +126,7 @@ describe('Label sheet layout and PDF', () => {
 
   it('создаёт один многостраничный PDF', async () => {
     const ctx = setupTestDb();
-    const item = createZeroItem(ctx, 'Sterile Gauze', 'GAUZE-44');
+    const item = createZeroItem(ctx, 'Sterile Gauze', 'REF-44');
     const model = resolveBulkLabels(ctx.db, ctx.admin, {
       sizeId: 'medium',
       selection: [{ itemId: item.id, copies: 22 }],

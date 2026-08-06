@@ -41,13 +41,14 @@ export default async function ItemDetailPage({
         <div className="flex flex-wrap gap-5">
           <ItemPhoto photoUrl={item.photoUrl} name={item.name} size={128} />
           <div className="min-w-52 flex-1">
-            <p className="font-mono text-lg text-slate-600">{item.internalCode}</p>
+            <p className="text-lg text-slate-600">
+              Item Code: <span className="font-mono">{item.internalCode}</span>
+            </p>
             <p className="mt-2 text-3xl font-bold">
               {item.currentQuantity}{' '}
               <span className="text-lg font-normal text-slate-600">{item.unitOfMeasurement}</span>
             </p>
             <dl className="mt-4 grid gap-x-6 gap-y-3 sm:grid-cols-2">
-              <Detail label="SKU" value={item.sku} />
               <Detail label="Reference Number" value={item.referenceNumber} />
               <Detail label="Category" value={item.category} />
               <Detail label="Storage Location" value={item.storageLocation} />

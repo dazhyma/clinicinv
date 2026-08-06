@@ -2,7 +2,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import type { AppDatabase } from '@/db/client';
 import { items } from '@/db/schema';
 import type { Actor } from '@/domain/actor';
-import { renderLabelSvg } from '@/domain/barcode';
+import { renderInventoryLabelSvg } from '@/domain/barcode';
 import { errors } from '@/domain/errors';
 import {
   calculateLabelSheetLayout,
@@ -19,7 +19,6 @@ export interface LabelSelectionItemView {
   photoUrl: string | null;
   internalCode: string;
   barcodeValue: string;
-  sku: string | null;
   referenceNumber: string | null;
   category: string | null;
   storageLocation: string | null;
@@ -41,7 +40,6 @@ export function listActiveItemsForLabels(
       photoUrl: item.photoUrl,
       internalCode: item.internalCode,
       barcodeValue: item.barcodeValue,
-      sku: item.sku,
       referenceNumber: item.referenceNumber,
       category: item.category,
       storageLocation: item.storageLocation,
@@ -66,6 +64,7 @@ export interface ResolvedBulkLabelItem {
   name: string;
   internalCode: string;
   barcodeValue: string;
+  referenceNumber: string | null;
   copies: number;
   labelSvg: string;
 }
@@ -140,7 +139,11 @@ export function resolveBulkLabels(
   const resolved = selected.map((item) => {
     let labelSvg: string;
     try {
-      labelSvg = renderLabelSvg(item.barcodeValue, { displayText: item.internalCode });
+      labelSvg = renderInventoryLabelSvg({
+        name: item.name,
+        internalCode: item.internalCode,
+        referenceNumber: item.referenceNumber,
+      });
     } catch {
       throw errors.validationFailed(
         `One or more barcodes could not be generated: ${item.name}. Try again or remove the affected item.`,
@@ -151,6 +154,7 @@ export function resolveBulkLabels(
       name: item.name,
       internalCode: item.internalCode,
       barcodeValue: item.barcodeValue,
+      referenceNumber: item.referenceNumber,
       copies: copiesById.get(item.id)!,
       labelSvg,
     };

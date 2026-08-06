@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { getItemForActor } from '@/actions/items';
 import { requirePage } from '@/auth/guards';
 import { getDb } from '@/db/client';
-import { renderLabelSvg } from '@/domain/barcode';
+import { renderInventoryLabelSvg } from '@/domain/barcode';
 import { LabelPrintView } from '../../../_components/label-print';
 import { itemsReturnPath } from '../../../_components/items-return-path';
 
@@ -15,8 +15,7 @@ export const dynamic = 'force-dynamic';
  * бумагу попадают только этикетки. Управление (копии, размер, Print, скачивание)
  * живёт в блоке `no-print`.
  *
- * Печатается текущее значение штрихкода: SKU, если он задан, либо постоянный
- * внутренний код. Прежние значения остаются алиасами и продолжают сканироваться.
+ * Графический и читаемый штрихкод всегда равны постоянному Item Code.
  *
  * Доступно обеим ролям: §3.2 не запрещает Staff печатать этикетку, а стоимости
  * на этикетке нет вовсе.
@@ -41,9 +40,12 @@ export default async function ItemBarcodePage({
       <LabelPrintView
         kindLabel="Item"
         title={item.name}
-        code={item.barcodeValue}
-        internalCode={item.internalCode}
-        labelSvg={renderLabelSvg(item.barcodeValue)}
+        code={item.internalCode}
+        labelSvg={renderInventoryLabelSvg({
+          name: item.name,
+          internalCode: item.internalCode,
+          referenceNumber: item.referenceNumber,
+        })}
         backHref={itemsReturnPath((await searchParams).returnTo)}
         backLabel="Back to Items"
       />

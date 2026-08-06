@@ -29,34 +29,13 @@ import { applyMovement, idempotencyKeys, runInTransaction } from './movements';
 import { assertNonNegativeQuantity, assertPositiveQuantity, isValidQuantity } from './quantity';
 import { staffCanSeeCost } from './settings';
 
-function itemBarcodeValue(sku: string | null | undefined, internalCode: string): string {
-  return sku?.trim() ? normalizeScannedCode(sku) : internalCode;
-}
-
-/**
- * Регистрирует текущее или прежнее значение штрихкода. Старые значения не
- * удаляются: после смены SKU уже напечатанная этикетка всё ещё должна находить
- * тот же предмет.
- */
-function ensureItemBarcodeAlias(
+/** Регистрирует единственный штрихкод Item — его постоянный системный код. */
+function registerItemBarcode(
   tx: DbLike,
   barcodeValue: string,
   itemId: number,
   createdAt: Date,
 ): void {
-  const existing = tx
-    .select()
-    .from(barcodeRegistry)
-    .where(eq(barcodeRegistry.barcodeValue, barcodeValue))
-    .get();
-
-  if (existing) {
-    if (existing.ownerType === 'item' && existing.ownerId === itemId) return;
-    throw errors.validationFailed(`Barcode "${barcodeValue}" is already assigned`, {
-      field: 'sku',
-    });
-  }
-
   tx.insert(barcodeRegistry)
     .values({ barcodeValue, ownerType: 'item', ownerId: itemId, createdAt })
     .run();
@@ -70,7 +49,6 @@ export interface CreateItemInput {
   unitOfMeasurement: string;
   /** §5.4: обязательное поле, может быть 0. */
   initialQuantity: number;
-  sku?: string | null;
   referenceNumber?: string | null;
   photoUrl?: string | null;
   category?: string | null;
@@ -104,22 +82,8 @@ export function createItem(db: AppDatabase, actor: Actor, input: CreateItemInput
 
   return runInTransaction(db, (tx) => {
     const internalCode = nextInternalCode(tx, ITEM_CODE_PREFIX);
-    const sku = input.sku?.trim() || null;
-    const barcodeValue = itemBarcodeValue(sku, internalCode);
+    const barcodeValue = internalCode;
     const now = new Date();
-
-    if (barcodeValue !== internalCode) {
-      const existingBarcode = tx
-        .select()
-        .from(barcodeRegistry)
-        .where(eq(barcodeRegistry.barcodeValue, barcodeValue))
-        .get();
-      if (existingBarcode) {
-        throw errors.validationFailed(`Barcode "${barcodeValue}" is already assigned`, {
-          field: 'sku',
-        });
-      }
-    }
 
     const created = tx
       .insert(items)
@@ -128,7 +92,6 @@ export function createItem(db: AppDatabase, actor: Actor, input: CreateItemInput
         barcodeValue,
         name,
         photoUrl: input.photoUrl ?? null,
-        sku,
         referenceNumber: input.referenceNumber?.trim() || null,
         currentUnitCostCents: input.currentUnitCostCents,
         unitOfMeasurement,
@@ -144,12 +107,7 @@ export function createItem(db: AppDatabase, actor: Actor, input: CreateItemInput
       .returning()
       .get();
 
-    // Internal code остаётся алиасом: если SKU позднее очистят, предмет вернётся
-    // к автоматически созданному значению без потери сканируемости.
-    ensureItemBarcodeAlias(tx, internalCode, created.id, now);
-    if (barcodeValue !== internalCode) {
-      ensureItemBarcodeAlias(tx, barcodeValue, created.id, now);
-    }
+    registerItemBarcode(tx, internalCode, created.id, now);
 
     let finalRow = created;
     if (input.initialQuantity > 0) {
@@ -188,13 +146,12 @@ export function createItem(db: AppDatabase, actor: Actor, input: CreateItemInput
 
 /**
  * Поля, которые Admin может менять через обычную форму (§5.7).
- * `internal_code` и `barcode_value` в этот тип не входят: пользователь меняет
- * только SKU, а текущее значение штрихкода синхронизируется доменом.
+ * `internal_code` и `barcode_value` в этот тип не входят: оба значения
+ * постоянны и не редактируются пользователем.
  */
 export interface UpdateItemPatch {
   name?: string;
   photoUrl?: string | null;
-  sku?: string | null;
   referenceNumber?: string | null;
   currentUnitCostCents?: number;
   unitOfMeasurement?: string;
@@ -247,19 +204,11 @@ export function updateItem(
     if (existing.archivedAt) {
       throw errors.validationFailed(`${existing.name} is archived and cannot be edited`);
     }
-    const sku = patch.sku !== undefined ? patch.sku?.trim() || null : existing.sku;
-    const barcodeValue = itemBarcodeValue(sku, existing.internalCode);
-
-    if (barcodeValue !== existing.barcodeValue) {
-      ensureItemBarcodeAlias(tx, barcodeValue, existing.id, new Date());
-    }
-
     const updated = tx
       .update(items)
       .set({
         ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
         ...(patch.photoUrl !== undefined ? { photoUrl: patch.photoUrl } : {}),
-        ...(patch.sku !== undefined ? { sku, barcodeValue } : {}),
         ...(patch.referenceNumber !== undefined
           ? { referenceNumber: patch.referenceNumber?.trim() || null }
           : {}),
@@ -315,12 +264,6 @@ export function updateItem(
         eventType: 'item.information_changed',
         oldValue: existing.photoUrl,
         newValue: updated.photoUrl,
-      },
-      {
-        field: 'sku',
-        eventType: 'item.information_changed',
-        oldValue: existing.sku,
-        newValue: updated.sku,
       },
       {
         field: 'referenceNumber',
@@ -661,7 +604,7 @@ export function findItemByBarcode(tx: DbLike, barcode: string): ItemRow | undefi
   return tx.select().from(items).where(eq(items.barcodeValue, normalized)).get();
 }
 
-/** §5.3 / §7.8: поиск по названию, внутреннему коду, SKU и reference number. */
+/** Поиск по названию, системному Item Code и reference number. */
 export function searchItems(
   tx: DbLike,
   query: string,
@@ -672,7 +615,6 @@ export function searchItems(
   const match = or(
     like(items.name, term),
     like(items.internalCode, term),
-    like(items.sku, term),
     like(items.referenceNumber, term),
   );
 
@@ -695,7 +637,7 @@ export const AVAILABILITY_FILTERS = ['all', 'in_stock', 'out_of_stock'] as const
 export type AvailabilityFilter = (typeof AVAILABILITY_FILTERS)[number];
 
 export interface ItemListFilters {
-  /** §5.3: одна строка ищется по названию, внутреннему коду, SKU и reference number. */
+  /** Одна строка ищется по названию, системному Item Code и reference number. */
   query?: string;
   category?: string | null;
   storageLocation?: string | null;
@@ -727,7 +669,6 @@ export function listItems(tx: DbLike, filters: ItemListFilters = {}): ItemRow[] 
     const match = or(
       sql`${items.name} like ${term} escape '\\'`,
       sql`${items.internalCode} like ${term} escape '\\'`,
-      sql`${items.sku} like ${term} escape '\\'`,
       sql`${items.referenceNumber} like ${term} escape '\\'`,
     );
     if (match) conditions.push(match);

@@ -7,6 +7,8 @@ import {
   LABEL_SIZES,
   renderBarcodePng,
   renderBarcodeSvg,
+  renderInventoryLabelPng,
+  renderInventoryLabelSvg,
   renderLabelSvg,
 } from '@/domain/barcode';
 import { clampCopies, labelSizeById, MAX_LABEL_COPIES } from '@/domain/label-sizes';
@@ -17,38 +19,30 @@ function pngSize(buffer: Buffer): { width: number; height: number } {
   return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
 }
 
-describe('Штрихкод генерируется из SKU либо внутреннего кода', () => {
-  it('без SKU этикетка предмета содержит автоматически созданный код', () => {
+describe('Штрихкод генерируется только из системного кода', () => {
+  it('полный лейбл предмета содержит имя, reference и Item Code', () => {
     const ctx = setupTestDb();
-    const item = makeItem(ctx, FIXTURES.gauze);
+    const item = makeItem(ctx, FIXTURES.gauze, { referenceNumber: 'J467' });
 
     expect(item.internalCode).toMatch(/^ITM-\d{6}$/);
     expect(item.barcodeValue).toBe(item.internalCode);
 
-    const svg = renderLabelSvg(item.barcodeValue);
+    const svg = renderInventoryLabelSvg({
+      name: item.name,
+      internalCode: item.internalCode,
+      referenceNumber: item.referenceNumber,
+    });
 
     expect(svg.startsWith('<svg')).toBe(true);
     expect(svg.trimEnd().endsWith('</svg>')).toBe(true);
     // §5.5: под графикой — человекочитаемая строка. Именно текст, а не контуры
     // глифов: строка присутствует в разметке и доступна скринридеру.
     expect(svg).toContain(`>${item.internalCode}</text>`);
-    expect(svg).toContain(`aria-label="Barcode ${item.internalCode}"`);
+    expect(svg).toContain('Gauze 4x4 (Ref: J467)');
+    expect(svg).toContain(`barcode ${item.internalCode}`);
     // Графика векторная: ни одного растрового вложения.
     expect(svg).not.toContain('data:image');
     expect(svg).toContain('<path');
-  });
-
-  it('с SKU этикетка кодирует SKU, а internal code остаётся идентификатором', () => {
-    const ctx = setupTestDb();
-    const item = makeItem(ctx, FIXTURES.gauze, { sku: 'gauze-44' });
-
-    expect(item.internalCode).toMatch(/^ITM-\d{6}$/);
-    expect(item.barcodeValue).toBe('GAUZE-44');
-
-    const svg = renderLabelSvg(item.barcodeValue);
-    expect(svg).toContain('>GAUZE-44</text>');
-    expect(svg).toContain('aria-label="Barcode GAUZE-44"');
-    expect(svg).not.toContain(`>${item.internalCode}</text>`);
   });
 
   it('этикетка пака содержит код пака (§6.6)', () => {
@@ -59,7 +53,7 @@ describe('Штрихкод генерируется из SKU либо внутр
     expect(pack.internalCode).toMatch(/^PCK-\d{6}$/);
     expect(pack.barcodeValue).toBe(pack.internalCode);
 
-    const svg = renderLabelSvg(pack.barcodeValue);
+    const svg = renderInventoryLabelSvg({ name: pack.name, internalCode: pack.internalCode });
     expect(svg).toContain(`>${pack.internalCode}</text>`);
     expect(svg).not.toContain(item.internalCode);
   });
@@ -120,6 +114,16 @@ describe('Download PNG (§5.6)', () => {
     );
 
     expect(padded.height - bare.height).toBeGreaterThan(padded.width - bare.width);
+  });
+
+  it('растеризует тот же полный лейбл без отдельной barcode-логики', async () => {
+    const png = await renderInventoryLabelPng({
+      name: 'Gauze 4x4',
+      internalCode: 'ITM-000127',
+      referenceNumber: 'J467',
+    });
+    expect(png.subarray(1, 4).toString('ascii')).toBe('PNG');
+    expect(pngSize(png).width).toBeGreaterThan(0);
   });
 });
 

@@ -16,6 +16,7 @@
  * компонент страницы печати.
  */
 import bwipjs from 'bwip-js/node';
+import sharp from 'sharp';
 
 export { LABEL_SIZES, DEFAULT_LABEL_SIZE_ID, labelSizeById, MAX_LABEL_COPIES } from './label-sizes';
 export type { LabelSize, LabelSizeId } from './label-sizes';
@@ -124,6 +125,69 @@ export function renderLabelSvg(value: string, options: LabelSvgOptions = {}): st
   ].join('');
 }
 
+export interface InventoryLabelInput {
+  name: string;
+  internalCode: string;
+  referenceNumber?: string | null;
+}
+
+function labelTitleLines(title: string): string[] {
+  if (title.length <= 45) return [title];
+  const middle = Math.floor(title.length / 2);
+  const spaces = [...title.matchAll(/ /g)].map((match) => match.index);
+  const split = spaces.reduce(
+    (best, index) => (Math.abs(index - middle) < Math.abs(best - middle) ? index : best),
+    spaces[0] ?? middle,
+  );
+  return [title.slice(0, split).trim(), title.slice(split).trim()];
+}
+
+/**
+ * Полный лейбл Item/Pack. Все способы печати получают один и тот же SVG,
+ * поэтому графический Code 128 и читаемый код физически не могут разойтись.
+ */
+export function renderInventoryLabelSvg(input: InventoryLabelInput): string {
+  const name = requireValue(input.name);
+  const code = requireValue(input.internalCode);
+  const reference = input.referenceNumber?.trim();
+  const title = reference ? `${name} (Ref: ${reference})` : name;
+  const titleLines = labelTitleLines(title);
+  const barcode = renderLabelSvg(code);
+  const match = VIEW_BOX_PATTERN.exec(barcode);
+  if (!match) throw new Error('Unexpected label SVG: no viewBox');
+  const width = Number(match[1]);
+  const barcodeHeight = Number(match[2]);
+  const padding = Math.max(4, Math.round(width * 0.02));
+  const maxLineLength = Math.max(...titleLines.map((line) => line.length));
+  const fontSize = Math.max(
+    8,
+    Math.min(Math.round(width * 0.045), (width - padding * 2) / (maxLineLength * 0.58)),
+  );
+  const lineHeight = fontSize * 1.18;
+  const titleHeight = Math.round(fontSize * (titleLines.length === 1 ? 1.8 : 3.05));
+  const height = barcodeHeight + titleHeight + padding;
+  const placed = barcode.replace(
+    '<svg ',
+    `<svg x="0" y="${titleHeight}" width="${width}" height="${barcodeHeight}" `,
+  );
+
+  return [
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}"`,
+    ` role="img" aria-label="${escapeXml(title)} — barcode ${escapeXml(code)}">`,
+    `<rect x="0" y="0" width="${width}" height="${height}" fill="#ffffff"/>`,
+    `<text x="${width / 2}" y="${Math.round(fontSize * 1.15)}" text-anchor="middle"`,
+    ` font-family="Arial, Helvetica, sans-serif" font-size="${fontSize}" font-weight="700"`,
+    ' fill="#000000">',
+    ...titleLines.map(
+      (line, index) =>
+        `<tspan x="${width / 2}" dy="${index === 0 ? 0 : lineHeight}">${escapeXml(line)}</tspan>`,
+    ),
+    '</text>',
+    placed,
+    '</svg>',
+  ].join('');
+}
+
 // --- PNG (§5.6, опция Download PNG) -----------------------------------------
 
 export interface BarcodePngOptions {
@@ -160,4 +224,9 @@ export async function renderBarcodePng(
     paddingleft: 10,
     paddingright: 10,
   });
+}
+
+/** PNG-версия того же полного SVG-лейбла; отдельной barcode-логики здесь нет. */
+export async function renderInventoryLabelPng(input: InventoryLabelInput): Promise<Buffer> {
+  return sharp(Buffer.from(renderInventoryLabelSvg(input)), { density: 300 }).png().toBuffer();
 }

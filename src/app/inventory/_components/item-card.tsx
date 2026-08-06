@@ -67,9 +67,7 @@ export function ItemCard({
         </p>
 
         <p className="mt-1 font-mono text-sm text-slate-500">
-          {item.sku && item.barcodeValue === item.sku.trim().toUpperCase()
-            ? `SKU ${item.sku}`
-            : item.barcodeValue}
+          Item Code: {item.internalCode}
           {item.referenceNumber ? ` · Ref ${item.referenceNumber}` : ''}
         </p>
       </div>

@@ -68,14 +68,13 @@ export const FIXTURES = {
 export function makeItem(
   ctx: TestContext,
   fixture: { name: string; costCents: number; quantity: number; unit: string },
-  overrides: { sku?: string; referenceNumber?: string } = {},
+  overrides: { referenceNumber?: string } = {},
 ) {
   return createItem(ctx.db, ctx.admin, {
     name: fixture.name,
     currentUnitCostCents: fixture.costCents,
     unitOfMeasurement: fixture.unit,
     initialQuantity: fixture.quantity,
-    sku: overrides.sku ?? null,
     referenceNumber: overrides.referenceNumber ?? null,
   });
 }

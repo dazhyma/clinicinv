@@ -52,7 +52,7 @@ export function BulkLabelSelection({
     return items.filter((item) => {
       if (
         query &&
-        ![item.name, item.internalCode, item.sku, item.referenceNumber].some((value) =>
+        ![item.name, item.internalCode, item.referenceNumber].some((value) =>
           value?.toLocaleLowerCase().includes(query),
         )
       ) {
@@ -127,7 +127,7 @@ export function BulkLabelSelection({
               type="search"
               value={state.filters.query}
               onChange={(event) => setFilter('query', event.target.value)}
-              placeholder="Name, internal code, SKU, reference number"
+              placeholder="Name, Item Code, reference number"
               className="w-full rounded-xl border border-slate-300 px-4 py-3 text-lg"
             />
           </label>
@@ -326,8 +326,6 @@ export function BulkLabelSelection({
                     <p className="text-xl font-semibold">{item.name}</p>
                     <p className="font-mono text-sm text-slate-600">{item.internalCode}</p>
                     <p className="text-sm text-slate-600">
-                      {item.sku ? `SKU ${item.sku}` : ''}
-                      {item.sku && item.referenceNumber ? ' · ' : ''}
                       {item.referenceNumber ? `Ref ${item.referenceNumber}` : ''}
                     </p>
                     <span className="mt-1 inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-sm text-emerald-800">

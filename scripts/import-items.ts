@@ -4,7 +4,7 @@
  *   npx tsx scripts/import-items.ts <файл.json>
  *
  * Формат файла — массив объектов с полями CreateItemInput (§5.4):
- *   { "sku": "...", "name": "...", "currentUnitCostCents": 151,
+ *   { "name": "...", "referenceNumber": "...", "currentUnitCostCents": 151,
  *     "unitOfMeasurement": "each", "initialQuantity": 400, "notes": "..." }
  *
  * Загрузка идёт ТОЛЬКО через доменный `createItem` (§10.4, §18.5):
@@ -13,10 +13,10 @@
  * инвариант current_quantity == SUM(quantity_delta) сломался бы на первом же
  * предмете (противоречие C-13).
  *
- * Повторный запуск безопасен: позиции с уже существующим SKU пропускаются.
+ * Повторный запуск безопасен: совпадение имени и reference number пропускается.
  */
 import { readFileSync } from 'node:fs';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { getDb } from '../src/db/client';
 import { items, userAccounts } from '../src/db/schema';
 import { createItem, type CreateItemInput } from '../src/domain/items';
@@ -43,16 +43,28 @@ const rows: (CreateItemInput & { sourceRow?: number })[] = JSON.parse(readFileSy
 
 let created = 0;
 let skipped = 0;
-const failed: { sku: string; error: string }[] = [];
+const failed: { item: string; error: string }[] = [];
 
 for (const row of rows) {
-  const sku = row.sku?.trim();
-  if (sku) {
-    const existing = db.select({ id: items.id }).from(items).where(eq(items.sku, sku)).get();
-    if (existing) {
-      skipped += 1;
-      continue;
-    }
+  const name = row.name?.trim();
+  const referenceNumber = row.referenceNumber?.trim() || null;
+  const existing = name
+    ? db
+        .select({ id: items.id })
+        .from(items)
+        .where(
+          and(
+            eq(items.name, name),
+            referenceNumber
+              ? eq(items.referenceNumber, referenceNumber)
+              : isNull(items.referenceNumber),
+          ),
+        )
+        .get()
+    : undefined;
+  if (existing) {
+    skipped += 1;
+    continue;
   }
   try {
     // Лишний ключ sourceRow (номер строки Excel — для диагностики) безвреден:
@@ -60,13 +72,16 @@ for (const row of rows) {
     createItem(db, actor, row);
     created += 1;
   } catch (error) {
-    failed.push({ sku: sku ?? row.name, error: error instanceof Error ? error.message : String(error) });
+    failed.push({
+      item: referenceNumber ? `${row.name} (${referenceNumber})` : row.name,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
 console.log(`создано:    ${created}`);
-console.log(`пропущено:  ${skipped} (SKU уже есть в базе)`);
+console.log(`пропущено:  ${skipped} (имя и reference number уже есть в базе)`);
 if (failed.length) {
   console.log(`ошибок:     ${failed.length}`);
-  for (const f of failed.slice(0, 20)) console.log(`   ${f.sku}: ${f.error}`);
+  for (const f of failed.slice(0, 20)) console.log(`   ${f.item}: ${f.error}`);
 }

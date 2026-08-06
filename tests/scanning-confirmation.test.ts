@@ -17,7 +17,6 @@ describe('barcode confirmation lookup is read-only', () => {
   it('returns an item card without changing stock, movements, or an operation', () => {
     const ctx = setupTestDb();
     const item = makeItem(ctx, FIXTURES.gauze, {
-      sku: 'GAUZE-44',
       referenceNumber: 'REF-127',
     });
     const operation = expectSuccess<{ operationId: number }>(
@@ -35,7 +34,6 @@ describe('barcode confirmation lookup is read-only', () => {
       id: item.id,
       name: 'Gauze 4x4',
       internalCode: item.internalCode,
-      sku: 'GAUZE-44',
       referenceNumber: 'REF-127',
       currentQuantity: 10,
       components: [],

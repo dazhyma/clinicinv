@@ -8,8 +8,8 @@ import { searchItemsAction } from '../actions';
  * Manual Item Search (§7.8).
  *
  * Нужен, когда штрихкод повреждён или сканер не работает, поэтому поиск идёт по
- * названию, внутреннему коду, SKU и reference/catalog number — тем же четырём
- * атрибутам, что и в разделе Inventory (§5.3).
+ * названию, системному Item Code и reference/catalog number — тем же
+ * атрибутам, что и в разделе Inventory.
  *
  * Выбор предмета добавляет его в операцию по ТОЙ ЖЕ логике, что и скан: то же
  * действие, то же движение остатка, тот же снимок стоимости (§7.8). Диалог
@@ -98,7 +98,7 @@ export function ManualSearchDialog({
         </div>
 
         <label htmlFor="manual-search" className="sr-only">
-          Search by name, internal code, SKU or reference number
+          Search by name, Item Code or reference number
         </label>
         <input
           id="manual-search"
@@ -107,7 +107,7 @@ export function ManualSearchDialog({
           autoComplete="off"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Name, internal code, SKU or reference number"
+          placeholder="Name, Item Code or reference number"
           className="w-full rounded-xl border border-slate-300 px-4 py-4 text-xl"
         />
 
@@ -133,7 +133,6 @@ export function ManualSearchDialog({
                     <p className="text-xl font-semibold">{item.name}</p>
                     <p className="font-mono text-sm text-slate-500">
                       {item.internalCode}
-                      {item.sku ? ` · SKU ${item.sku}` : ''}
                       {item.referenceNumber ? ` · Ref ${item.referenceNumber}` : ''}
                     </p>
                     <p className="text-base text-slate-600">

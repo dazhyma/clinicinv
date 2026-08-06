@@ -103,7 +103,6 @@ function movementPresentation(type: string, reason?: string | null): {
 function fieldLabel(field: string | null): string {
   const labels: Record<string, string> = {
     name: 'Item Name Changed',
-    sku: 'SKU Changed',
     referenceNumber: 'Reference Number Changed',
     photoUrl: 'Photo Changed',
     unitOfMeasurement: 'Unit of Measurement Changed',

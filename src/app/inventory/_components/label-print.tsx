@@ -29,7 +29,6 @@ import {
 export function LabelPrintView({
   title,
   code,
-  internalCode,
   labelSvg,
   backHref,
   backLabel,
@@ -37,7 +36,6 @@ export function LabelPrintView({
 }: {
   title: string;
   code: string;
-  internalCode: string;
   /** Готовая SVG-разметка этикетки, сгенерированная на сервере. */
   labelSvg: string;
   backHref: string;
@@ -160,16 +158,10 @@ export function LabelPrintView({
               className="flex w-full max-w-2xl flex-col items-center justify-center overflow-hidden bg-white p-5 shadow-lg ring-1 ring-slate-300"
               style={{ aspectRatio: `${size.widthMm} / ${size.heightMm}` }}
             >
-              <p className="w-full truncate text-center text-lg font-semibold text-black sm:text-2xl">
-                {title}
-              </p>
               <div
                 className="label-graphic min-h-0 w-full max-w-xl flex-1"
                 dangerouslySetInnerHTML={{ __html: labelSvg }}
               />
-              <p className="w-full text-center font-mono text-sm text-black sm:text-base">
-                {internalCode}
-              </p>
             </div>
           </div>
         </section>
@@ -182,9 +174,6 @@ export function LabelPrintView({
             className="label flex flex-col items-center justify-center overflow-hidden bg-white p-[2mm]"
             style={{ width: `${size.widthMm}mm`, height: `${size.heightMm}mm` }}
           >
-            <p className="w-full shrink-0 truncate text-center text-[3mm] leading-tight font-semibold text-black">
-              {title}
-            </p>
             {/*
               Разметка SVG сгенерирована сервером из проверенного barcode_value
               (bwip-js + экранированный текст). Инлайновый вектор, а не <img>:
@@ -194,9 +183,6 @@ export function LabelPrintView({
               className="label-graphic min-h-0 w-full flex-1"
               dangerouslySetInnerHTML={{ __html: labelSvg }}
             />
-            <p className="w-full shrink-0 text-center font-mono text-[2.3mm] leading-none text-black">
-              {internalCode}
-            </p>
           </div>
         ))}
       </div>

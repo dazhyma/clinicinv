@@ -19,7 +19,7 @@ import { FIXTURES, makeItem, nextClientEventId, setupTestDb } from './helpers';
 describe('AC-4.1: снимок стоимости в завершённой операции', () => {
   it('завершённая операция показывает $3.00 после смены цены на $4.25', () => {
     const ctx = setupTestDb();
-    const gauze = makeItem(ctx, FIXTURES.gauze, { sku: 'SKU-1', referenceNumber: 'REF-1' });
+    const gauze = makeItem(ctx, FIXTURES.gauze, { referenceNumber: 'REF-1' });
 
     const operation = startOperation(ctx.db, ctx.staff);
     addItemToOperation(ctx.db, ctx.staff, {
@@ -33,10 +33,9 @@ describe('AC-4.1: снимок стоимости в завершённой оп
     expect(line.unitCostSnapshotCents).toBe(300);
     expect(line.quantity).toBe(2);
     expect(line.lineTotalCents).toBe(600);
-    // §11.2: снимки названия, кода, SKU и reference number.
+    // Снимки названия, Item Code и reference number.
     expect(line.itemNameSnapshot).toBe('Gauze 4x4');
     expect(line.internalCodeSnapshot).toBe(gauze.internalCode);
-    expect(line.skuSnapshot).toBe('SKU-1');
     expect(line.referenceNumberSnapshot).toBe('REF-1');
     expect(getItem(ctx.db, gauze.id)!.currentQuantity).toBe(8);
 
@@ -155,9 +154,9 @@ describe('AC-4.2: изменение цены не трогает строки �
 });
 
 describe('AC-4.3: изменение атрибутов предмета не пересчитывает историю', () => {
-  it('строка завершённой операции хранит старые name, SKU и reference', () => {
+  it('строка завершённой операции хранит старые name и reference', () => {
     const ctx = setupTestDb();
-    const gauze = makeItem(ctx, FIXTURES.gauze, { sku: 'SKU-1', referenceNumber: 'REF-1' });
+    const gauze = makeItem(ctx, FIXTURES.gauze, { referenceNumber: 'REF-1' });
     const operation = startOperation(ctx.db, ctx.staff);
     addItemToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
@@ -169,14 +168,12 @@ describe('AC-4.3: изменение атрибутов предмета не п
 
     updateItem(ctx.db, ctx.admin, gauze.id, {
       name: 'Gauze 4x4 sterile',
-      sku: 'SKU-999',
       referenceNumber: 'REF-999',
       currentUnitCostCents: 425,
     });
 
     const line = listOperationLines(ctx.db, operation.id)[0]!;
     expect(line.itemNameSnapshot).toBe('Gauze 4x4');
-    expect(line.skuSnapshot).toBe('SKU-1');
     expect(line.referenceNumberSnapshot).toBe('REF-1');
     expect(line.unitCostSnapshotCents).toBe(300);
     expect(line.lineTotalCents).toBe(600);

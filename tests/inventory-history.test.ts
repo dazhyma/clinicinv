@@ -24,7 +24,6 @@ describe('Inventory History', () => {
   it('хранит номер, роли начала/завершения и снимки последнего ввода', () => {
     const ctx = setupTestDb();
     const item = makeItem(ctx, FIXTURES.gauze, {
-      sku: 'GAUZE-OLD',
       referenceNumber: 'REF-1',
     });
     const count = success<InventoryCountStateView>(
@@ -45,7 +44,6 @@ describe('Inventory History', () => {
     success(
       updateItemAction(ctx.db, ctx.admin, item.id, {
         name: 'Renamed Gauze',
-        sku: 'GAUZE-NEW',
         referenceNumber: 'REF-2',
         costPerUnit: '3.00',
         unitOfMeasurement: 'each',
@@ -67,7 +65,6 @@ describe('Inventory History', () => {
     const detail = getInventoryHistoryForActor(ctx.db, ctx.admin, count.id)!;
     expect(detail.lines[0]).toMatchObject({
       name: 'Gauze 4x4',
-      sku: 'GAUZE-OLD',
       referenceNumber: 'REF-1',
       expectedQuantity: 10,
       countedQuantity: 8,
@@ -119,7 +116,6 @@ describe('Item History', () => {
     success(
       updateItemAction(ctx.db, ctx.admin, item.id, {
         name: 'Sterile Gauze',
-        sku: 'GAUZE-STERILE',
         referenceNumber: '',
         costPerUnit: '3.25',
         unitOfMeasurement: 'each',

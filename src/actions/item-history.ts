@@ -26,7 +26,6 @@ export interface ItemHistoryView {
     id: number;
     name: string;
     internalCode: string;
-    sku: string | null;
     referenceNumber: string | null;
     photoUrl: string | null;
     currentQuantity: number;
@@ -54,7 +53,6 @@ export function getItemHistoryForActor(
       id: item.id,
       name: item.name,
       internalCode: item.internalCode,
-      sku: item.sku,
       referenceNumber: item.referenceNumber,
       photoUrl: item.photoUrl,
       currentQuantity: item.currentQuantity,

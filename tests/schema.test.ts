@@ -3,6 +3,9 @@
  * (§2.4, §18.3). Проверяется именно база, а не логика приложения: §21.1 и §16
  * требуют, чтобы дубликат нельзя было записать даже прямой вставкой.
  */
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import BetterSqlite3 from 'better-sqlite3';
 import { describe, expect, it } from 'vitest';
 import { getTableName, getTableColumns } from 'drizzle-orm';
 import { allTables } from '@/db/schema';
@@ -29,6 +32,65 @@ describe('Схема соответствует объявленной в Drizzl
       }
     }
   });
+
+  it('миграция сохраняет ITM-код и удаляет старый barcode alias', () => {
+    const sqlite = new BetterSqlite3(':memory:');
+    const migration = (name: string) =>
+      readFileSync(path.resolve(process.cwd(), 'drizzle', name), 'utf8');
+
+    sqlite.exec(migration('0001_init.sql'));
+    sqlite
+      .prepare(
+        `INSERT INTO items
+          (id, internal_code, barcode_value, name, sku, current_unit_cost_cents,
+           unit_of_measurement, current_quantity, status, created_at, updated_at)
+         VALUES (1, 'ITM-000110', 'ITM-000110', 'Needle', 'NEEDLE-OLD', 100,
+                 'each', 0, 'active', 1, 1)`,
+      )
+      .run();
+    sqlite
+      .prepare(
+        `INSERT INTO barcode_registry (barcode_value, owner_type, owner_id, created_at)
+         VALUES ('ITM-000110', 'item', 1, 1)`,
+      )
+      .run();
+    for (const name of ['0002_barcode_aliases.sql', '0003_inventory_and_item_history.sql']) {
+      sqlite.exec(migration(name));
+    }
+    sqlite
+      .prepare(
+        `INSERT INTO item_history_events
+          (item_id, event_type, field_name, old_value, new_value, created_at)
+         VALUES (1, 'item.information_changed', 'sku', 'NEEDLE-OLD', 'NEEDLE-NEW', 2)`,
+      )
+      .run();
+    for (const name of ['0004_archiving_and_count_deletion.sql', '0005_remove_sku.sql']) {
+      sqlite.exec(migration(name));
+    }
+
+    expect(
+      sqlite.prepare(`SELECT internal_code, barcode_value FROM items WHERE id = 1`).get(),
+    ).toEqual({ internal_code: 'ITM-000110', barcode_value: 'ITM-000110' });
+    expect(
+      sqlite
+        .prepare(`SELECT barcode_value FROM barcode_registry WHERE owner_type = 'item'`)
+        .all(),
+    ).toEqual([{ barcode_value: 'ITM-000110' }]);
+    expect(sqlite.prepare(`SELECT count(*) AS count FROM item_history_events`).get()).toEqual({
+      count: 0,
+    });
+    sqlite.close();
+  });
+
+  it('физически не содержит SKU и его исторических snapshots', () => {
+    const ctx = setupTestDb();
+    for (const table of ['items', 'operation_items', 'inventory_count_lines']) {
+      const columns = (
+        ctx.sqlite.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
+      ).map((column) => column.name.toLowerCase());
+      expect(columns.some((column) => column.includes('sku'))).toBe(false);
+    }
+  });
 });
 
 describe('Уникальность обеспечена БД, а не приложением', () => {
@@ -53,10 +115,23 @@ describe('Уникальность обеспечена БД, а не прило
         .prepare(
           `INSERT INTO items (internal_code, barcode_value, name, current_unit_cost_cents,
                               unit_of_measurement, current_quantity, status, created_at, updated_at)
-           VALUES (?, 'OTHER-1', 'Clone', 100, 'each', 0, 'active', ?, ?)`,
+           VALUES (?, ?, 'Clone', 100, 'each', 0, 'active', ?, ?)`,
         )
-        .run(item.internalCode, Date.now(), Date.now()),
+        .run(item.internalCode, item.internalCode, Date.now(), Date.now()),
     ).toThrow(/UNIQUE constraint failed/i);
+  });
+
+  it('прямой SQL не может развести internal_code и barcode_value', () => {
+    const ctx = setupTestDb();
+    expect(() =>
+      ctx.sqlite
+        .prepare(
+          `INSERT INTO items (internal_code, barcode_value, name, current_unit_cost_cents,
+                              unit_of_measurement, current_quantity, status, created_at, updated_at)
+           VALUES ('ITM-999999', 'OTHER', 'Invalid', 100, 'each', 0, 'active', ?, ?)`,
+        )
+        .run(Date.now(), Date.now()),
+    ).toThrow(/must equal internal_code/i);
   });
 
   it('пак не может занять штрихкод предмета — реестр общий (§16)', () => {

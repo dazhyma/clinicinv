@@ -49,7 +49,7 @@ export default async function ReceiveStockPickerPage({
         className="mb-5 flex flex-col gap-3 sm:flex-row"
       >
         <label htmlFor="q" className="sr-only">
-          Search by name, internal code, SKU or reference number
+          Search by name, Item Code or reference number
         </label>
         <input
           id="q"
@@ -57,7 +57,7 @@ export default async function ReceiveStockPickerPage({
           type="search"
           autoFocus
           defaultValue={q}
-          placeholder="Search by name, code, SKU or reference…"
+          placeholder="Search by name, Item Code or reference…"
           className="flex-1 rounded-lg border border-slate-300 px-4 py-3 text-lg"
         />
         <button

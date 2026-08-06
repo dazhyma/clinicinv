@@ -66,7 +66,6 @@ export interface InventoryHistoryDetailView {
     itemId: number;
     name: string;
     internalCode: string;
-    sku: string | null;
     referenceNumber: string | null;
     photoUrl: string | null;
     unitOfMeasurement: string;
@@ -117,7 +116,6 @@ export function getInventoryHistoryForActor(
       itemId: line.itemId,
       name: line.itemNameSnapshot ?? `Item ${line.itemId}`,
       internalCode: line.internalCodeSnapshot ?? '',
-      sku: line.skuSnapshot,
       referenceNumber: line.referenceNumberSnapshot,
       photoUrl: line.photoUrlSnapshot,
       unitOfMeasurement: line.unitOfMeasurementSnapshot ?? 'units',

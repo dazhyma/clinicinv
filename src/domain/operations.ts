@@ -215,7 +215,7 @@ function upsertOperationLine(
       .get();
   }
 
-  // §11.2: снимки названия, внутреннего кода, SKU, reference number и стоимости
+  // Новое дополнение к ТЗ: снимки имени, Item Code, reference number и стоимости
   // единицы копируются в строку в момент добавления и больше не меняются.
   return tx
     .insert(operationItems)
@@ -226,7 +226,6 @@ function upsertOperationLine(
       sourcePackId,
       itemNameSnapshot: item.name,
       internalCodeSnapshot: item.internalCode,
-      skuSnapshot: item.sku,
       referenceNumberSnapshot: item.referenceNumber,
       unitOfMeasurementSnapshot: item.unitOfMeasurement,
       quantity,

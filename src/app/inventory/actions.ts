@@ -77,7 +77,6 @@ function itemFormInput(formData: FormData): ItemFormInput {
     costPerUnit: text(formData, 'costPerUnit'),
     unitOfMeasurement: text(formData, 'unitOfMeasurement'),
     initialQuantity: text(formData, 'initialQuantity'),
-    sku: text(formData, 'sku'),
     referenceNumber: text(formData, 'referenceNumber'),
     category: text(formData, 'category'),
     storageLocation: text(formData, 'storageLocation'),

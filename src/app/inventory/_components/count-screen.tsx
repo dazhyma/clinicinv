@@ -255,11 +255,9 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
             <div className="min-w-0">
               <p className="text-xl font-semibold">{target.name}</p>
               <p className="font-mono text-base text-slate-600">{target.internalCode}</p>
-              {target.sku || target.referenceNumber ? (
+              {target.referenceNumber ? (
                 <p className="text-sm text-slate-600">
-                  {[target.sku ? `SKU ${target.sku}` : null, target.referenceNumber ? `Ref ${target.referenceNumber}` : null]
-                    .filter(Boolean)
-                    .join(' · ')}
+                  Ref {target.referenceNumber}
                 </p>
               ) : null}
             </div>

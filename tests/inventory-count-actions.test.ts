@@ -339,21 +339,21 @@ describe('Inventory Count доступен Staff без расширения о�
     const gauze = makeItem(
       ctx,
       { ...FIXTURES.gauze, quantity: 10 },
-      { sku: 'GAUZE-SKU', referenceNumber: 'REF-44' },
+      { referenceNumber: 'REF-44' },
     );
     makeItem(ctx, FIXTURES.mask);
     const count = expectSuccess<InventoryCountStateView>(
       startInventoryCountAction(ctx.db, ctx.staff),
     ).data;
 
-    const results = expectSuccess<Array<{ itemId: number; sku: string | null }>>(
+    const results = expectSuccess<Array<{ itemId: number; referenceNumber: string | null }>>(
       searchItemsForCountAction(ctx.db, ctx.staff, {
         countId: count.id,
-        query: 'GAUZE-SKU',
+        query: 'REF-44',
       }),
     ).data;
     expect(results).toEqual([
-      expect.objectContaining({ itemId: gauze.id, sku: 'GAUZE-SKU' }),
+      expect.objectContaining({ itemId: gauze.id, referenceNumber: 'REF-44' }),
     ]);
 
     const selected = expectSuccess<{ itemId: number; expectedQuantity: number }>(

@@ -144,11 +144,10 @@ export const items = sqliteTable(
     id: integer('id').primaryKey({ autoIncrement: true }),
     /** `ITM-000127`. Постоянен, не переиспользуется, не редактируется формой (§5.5, §18.7). */
     internalCode: text('internal_code').notNull(),
-    /** SKU, если он задан; иначе internalCode. Глобальная уникальность — в barcodeRegistry. */
+    /** Всегда равен internalCode. Глобальная уникальность — в barcodeRegistry. */
     barcodeValue: text('barcode_value').notNull(),
     name: text('name').notNull(),
     photoUrl: text('photo_url'),
-    sku: text('sku'),
     referenceNumber: text('reference_number'),
     /** Cost, не продажная цена (§11.1). Целые центы. */
     currentUnitCostCents: integer('current_unit_cost_cents').notNull(),
@@ -169,7 +168,6 @@ export const items = sqliteTable(
   (t) => [
     uniqueIndex('ux_items_internal_code').on(t.internalCode),
     uniqueIndex('ux_items_barcode_value').on(t.barcodeValue),
-    index('ix_items_sku').on(t.sku),
     index('ix_items_reference_number').on(t.referenceNumber),
     index('ix_items_name').on(t.name),
     index('ix_items_category').on(t.category),
@@ -275,7 +273,6 @@ export const operationItems = sqliteTable(
     sourcePackId: integer('source_pack_id').references(() => packs.id),
     itemNameSnapshot: text('item_name_snapshot').notNull(),
     internalCodeSnapshot: text('internal_code_snapshot').notNull(),
-    skuSnapshot: text('sku_snapshot'),
     referenceNumberSnapshot: text('reference_number_snapshot'),
     unitOfMeasurementSnapshot: text('unit_of_measurement_snapshot').notNull(),
     quantity: integer('quantity').notNull(),
@@ -380,7 +377,6 @@ export const inventoryCountLines = sqliteTable(
     applied: integer('applied', { mode: 'boolean' }).notNull().default(false),
     itemNameSnapshot: text('item_name_snapshot'),
     internalCodeSnapshot: text('internal_code_snapshot'),
-    skuSnapshot: text('sku_snapshot'),
     referenceNumberSnapshot: text('reference_number_snapshot'),
     photoUrlSnapshot: text('photo_url_snapshot'),
     unitOfMeasurementSnapshot: text('unit_of_measurement_snapshot'),

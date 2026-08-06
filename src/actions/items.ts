@@ -67,7 +67,6 @@ export interface ItemView {
   barcodeValue: string;
   name: string;
   photoUrl: string | null;
-  sku: string | null;
   referenceNumber: string | null;
   unitOfMeasurement: string;
   currentQuantity: number;
@@ -89,7 +88,6 @@ export function toItemView(item: ItemRow, options: { showCost: boolean }): ItemV
     barcodeValue: item.barcodeValue,
     name: item.name,
     photoUrl: item.photoUrl,
-    sku: item.sku,
     referenceNumber: item.referenceNumber,
     unitOfMeasurement: item.unitOfMeasurement,
     currentQuantity: item.currentQuantity,
@@ -204,7 +202,6 @@ export interface ItemFormInput {
   unitOfMeasurement?: RawFormValue;
   /** §5.4: обязательное поле, значение 0 допустимо. Только при создании. */
   initialQuantity?: RawFormValue;
-  sku?: RawFormValue;
   referenceNumber?: RawFormValue;
   category?: RawFormValue;
   storageLocation?: RawFormValue;
@@ -219,7 +216,6 @@ interface ValidatedItemFields {
   name: string;
   currentUnitCostCents: number;
   unitOfMeasurement: string;
-  sku: string | null;
   referenceNumber: string | null;
   category: string | null;
   storageLocation: string | null;
@@ -240,7 +236,6 @@ function validateItemFields(
       'Unit of Measurement',
       32,
     ),
-    sku: v.optionalText('sku', input.sku, 100),
     referenceNumber: v.optionalText('referenceNumber', input.referenceNumber, 100),
     category: v.optionalText('category', input.category, 100),
     storageLocation: v.optionalText('storageLocation', input.storageLocation, 100),
@@ -300,7 +295,7 @@ export interface UpdatedItem {
  * Редактирование предмета (§5.7).
  *
  * Внутренний код и штрихкод здесь нельзя передать напрямую: их нет в
- * `ItemFormInput`. Домен сам выбирает штрихкод из SKU либо внутреннего кода.
+ * `ItemFormInput`. Штрихкод всегда равен постоянному системному Item Code.
  * Изменение стоимости влияет только на будущие добавления — ни одна строка
  * операции отсюда не переписывается (§11.3, §11.4, §18.15, §18.16).
  */

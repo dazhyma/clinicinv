@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { getPackForActor } from '@/actions/packs';
 import { requirePage } from '@/auth/guards';
 import { getDb } from '@/db/client';
-import { renderLabelSvg } from '@/domain/barcode';
+import { renderInventoryLabelSvg } from '@/domain/barcode';
 import { LabelPrintView } from '../../../_components/label-print';
 
 export const dynamic = 'force-dynamic';
@@ -33,8 +33,7 @@ export default async function PackBarcodePage({ params }: { params: Promise<{ id
         kindLabel="Pack"
         title={pack.name}
         code={pack.internalCode}
-        internalCode={pack.internalCode}
-        labelSvg={renderLabelSvg(pack.barcodeValue)}
+        labelSvg={renderInventoryLabelSvg({ name: pack.name, internalCode: pack.internalCode })}
         backHref={`/inventory/packs/${pack.id}`}
         backLabel="Back to Pack"
       />

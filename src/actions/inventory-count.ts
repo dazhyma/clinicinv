@@ -70,7 +70,6 @@ export interface CountScanTargetView {
   itemId: number;
   name: string;
   internalCode: string;
-  sku: string | null;
   referenceNumber: string | null;
   photoUrl: string | null;
   unitOfMeasurement: string;
@@ -84,7 +83,6 @@ export interface CountSearchResultView {
   itemId: number;
   name: string;
   internalCode: string;
-  sku: string | null;
   referenceNumber: string | null;
   currentQuantity: number;
   unitOfMeasurement: string;
@@ -205,7 +203,6 @@ function openCountItem(
     itemId: item.id,
     name: item.name,
     internalCode: item.internalCode,
-    sku: item.sku,
     referenceNumber: item.referenceNumber,
     photoUrl: item.photoUrl,
     unitOfMeasurement: item.unitOfMeasurement,
@@ -273,7 +270,7 @@ export interface SearchCountItemsInput {
   query?: RawFormValue;
 }
 
-/** Поиск по названию, внутреннему коду, SKU и reference number. */
+/** Поиск по названию, системному Item Code и reference number. */
 export function searchItemsForCountAction(
   db: AppDatabase,
   actor: Actor,
@@ -295,7 +292,6 @@ export function searchItemsForCountAction(
       itemId: item.id,
       name: item.name,
       internalCode: item.internalCode,
-      sku: item.sku,
       referenceNumber: item.referenceNumber,
       currentQuantity: item.currentQuantity,
       unitOfMeasurement: item.unitOfMeasurement,

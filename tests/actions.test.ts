@@ -144,90 +144,44 @@ describe('Слой действий: точечные права Staff', () => {
   });
 });
 
-describe('SKU определяет текущее значение штрихкода', () => {
-  it('использует SKU при создании, а без SKU — автоматический internal code', () => {
+describe('Item Code определяет единственное значение штрихкода', () => {
+  it('игнорирует устаревшее поле sku и использует автоматически созданный Item Code', () => {
     const ctx = setupTestDb();
-    const withSku = expectSuccess<{ itemId: number; internalCode: string }>(
-      createItemAction(ctx.db, ctx.admin, {
-        name: 'Needle',
-        costPerUnit: '1.25',
-        unitOfMeasurement: 'each',
-        initialQuantity: '0',
-        sku: ' needle-42 ',
-      }),
-    );
-    const automatic = expectSuccess<{ itemId: number; internalCode: string }>(
-      createItemAction(ctx.db, ctx.admin, {
-        name: 'Gauze',
-        costPerUnit: '2.00',
-        unitOfMeasurement: 'each',
-        initialQuantity: '0',
-        sku: '   ',
-      }),
+    const legacyInput = {
+      name: 'Needle',
+      costPerUnit: '1.25',
+      unitOfMeasurement: 'each',
+      initialQuantity: '0',
+      sku: 'needle-42',
+    };
+    const created = expectSuccess<{ itemId: number; internalCode: string }>(
+      createItemAction(ctx.db, ctx.admin, legacyInput),
     );
 
-    expect(getItem(ctx.db, withSku.data.itemId)).toMatchObject({
-      sku: 'needle-42',
-      barcodeValue: 'NEEDLE-42',
-    });
-    expect(getItem(ctx.db, automatic.data.itemId)?.barcodeValue).toBe(
-      automatic.data.internalCode,
-    );
+    const item = getItem(ctx.db, created.data.itemId)!;
+    expect(item.barcodeValue).toBe(created.data.internalCode);
+    expect(item).not.toHaveProperty('sku');
   });
 
-  it('при Edit синхронизирует штрихкод, сохраняя прежние коды как алиасы', () => {
+  it('устаревшее поле sku при Edit не меняет код и не создаёт alias', () => {
     const ctx = setupTestDb();
-    const item = makeItem(ctx, FIXTURES.gauze, { sku: 'OLD-SKU' });
+    const item = makeItem(ctx, FIXTURES.gauze);
     const internalCode = item.internalCode;
-
+    const legacyPatch = {
+      name: item.name,
+      costPerUnit: '3.00',
+      unitOfMeasurement: 'each',
+      sku: 'new-sku',
+    };
     expectSuccess(
-      updateItemAction(ctx.db, ctx.admin, item.id, {
-        name: item.name,
-        costPerUnit: '3.00',
-        unitOfMeasurement: 'each',
-        sku: 'new-sku',
-      }),
+      updateItemAction(ctx.db, ctx.admin, item.id, legacyPatch),
     );
 
     expect(getItem(ctx.db, item.id)).toMatchObject({
       internalCode,
-      sku: 'new-sku',
-      barcodeValue: 'NEW-SKU',
+      barcodeValue: internalCode,
     });
-    for (const alias of [internalCode, 'OLD-SKU', 'NEW-SKU']) {
-      expect(findBarcodeOwner(ctx.db, alias)).toMatchObject({
-        ownerType: 'item',
-        ownerId: item.id,
-      });
-    }
-
-    expectSuccess(
-      updateItemAction(ctx.db, ctx.admin, item.id, {
-        name: item.name,
-        costPerUnit: '3.00',
-        unitOfMeasurement: 'each',
-        sku: '',
-      }),
-    );
-    expect(getItem(ctx.db, item.id)?.barcodeValue).toBe(internalCode);
-  });
-
-  it('не позволяет двум объектам использовать один SKU как штрихкод', () => {
-    const ctx = setupTestDb();
-    makeItem(ctx, FIXTURES.gauze, { sku: 'SHARED-SKU' });
-
-    const duplicate = expectFailure(
-      createItemAction(ctx.db, ctx.admin, {
-        name: 'Another item',
-        costPerUnit: '1.00',
-        unitOfMeasurement: 'each',
-        initialQuantity: '0',
-        sku: 'shared-sku',
-      }),
-    );
-
-    expect(duplicate.code).toBe('VALIDATION_FAILED');
-    expect(duplicate.fieldErrors?.sku).toMatch(/already assigned/i);
+    expect(findBarcodeOwner(ctx.db, 'NEW-SKU')).toBeUndefined();
   });
 });
 
@@ -420,7 +374,6 @@ describe('Валидация формы Add New Item (§5.4)', () => {
       initialQuantity: 'Initial Quantity is required',
     });
     // Необязательные поля ошибок не дают.
-    expect(result.fieldErrors?.sku).toBeUndefined();
     expect(result.fieldErrors?.notes).toBeUndefined();
   });
 
@@ -547,7 +500,6 @@ describe('Поиск и фильтры списка предметов (§5.3, �
         costPerUnit: '3.00',
         unitOfMeasurement: 'each',
         initialQuantity: '10',
-        sku: 'GZ-4X4',
         referenceNumber: 'REF-11223',
         category: 'Dressings',
         storageLocation: 'Shelf A',
@@ -561,7 +513,6 @@ describe('Поиск и фильтры списка предметов (§5.3, �
         costPerUnit: '0.50',
         unitOfMeasurement: 'pair',
         initialQuantity: '0',
-        sku: 'GLV-L',
         referenceNumber: 'REF-99887',
         category: 'PPE',
         storageLocation: 'Shelf B',
@@ -583,12 +534,6 @@ describe('Поиск и фильтры списка предметов (§5.3, �
     expect(found.map((item) => item.id)).toEqual([gauze.itemId]);
   });
 
-  it('находит по SKU', () => {
-    const { ctx, gauze } = seed();
-    const found = listItemsForActor(ctx.db, ctx.admin, { q: 'GZ-4X4' }).items;
-    expect(found.map((item) => item.id)).toEqual([gauze.itemId]);
-  });
-
   it('находит по reference / catalog number', () => {
     const { ctx, gloves } = seed();
     const found = listItemsForActor(ctx.db, ctx.admin, { q: 'REF-99887' }).items;
@@ -597,7 +542,7 @@ describe('Поиск и фильтры списка предметов (§5.3, �
 
   it('поиск работает и под Staff, но без стоимости', () => {
     const { ctx, gauze } = seed();
-    const found = listItemsForActor(ctx.db, ctx.staff, { q: 'GZ-4X4' }).items;
+    const found = listItemsForActor(ctx.db, ctx.staff, { q: gauze.internalCode }).items;
     expect(found.map((item) => item.id)).toEqual([gauze.itemId]);
     expect('unitCostCents' in found[0]!).toBe(false);
   });
@@ -687,12 +632,12 @@ describe('Поиск и фильтры списка предметов (§5.3, �
   });
 });
 
-// --- Дополнение заказчика: internal code постоянен, barcode следует за SKU ----
+// --- Дополнение заказчика: Item Code и barcode постоянны -------------------
 
-describe('Редактирование сохраняет внутренний код и синхронизирует штрихкод', () => {
-  it('после смены SKU внутренний код тот же, а barcode использует новый SKU', () => {
+describe('Редактирование сохраняет Item Code и штрихкод', () => {
+  it('после изменения данных Item Code остаётся единственным barcode value', () => {
     const ctx = setupTestDb();
-    const item = makeItem(ctx, FIXTURES.gauze, { sku: 'OLD', referenceNumber: 'OLD-REF' });
+    const item = makeItem(ctx, FIXTURES.gauze, { referenceNumber: 'OLD-REF' });
     const before = getItem(ctx.db, item.id)!;
 
     expectSuccess(
@@ -700,14 +645,13 @@ describe('Редактирование сохраняет внутренний �
         name: 'Gauze sterile',
         costPerUnit: '4.25',
         unitOfMeasurement: 'each',
-        sku: 'NEW',
         referenceNumber: 'NEW-REF',
       }),
     );
 
     const after = getItem(ctx.db, item.id)!;
     expect(after.internalCode).toBe(before.internalCode);
-    expect(after.barcodeValue).toBe('NEW');
+    expect(after.barcodeValue).toBe(before.internalCode);
     expect(after.name).toBe('Gauze sterile');
     expect(after.currentUnitCostCents).toBe(425);
     // Остаток формой редактирования не трогается (§10.4).

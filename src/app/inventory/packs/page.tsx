@@ -4,6 +4,8 @@ import { withBasePath } from '@/base-path';
 import { requirePage } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import { AppHeader } from '../../_components/app-header';
+import { AutoDismissAlert } from '../../_components/auto-dismiss-alert';
+import { EmptyState } from '../../_components/ui';
 import { InventoryTabs } from '../_components/inventory-tabs';
 import { PackCard } from '../_components/pack-card';
 
@@ -43,7 +45,7 @@ export default async function InventoryPacksPage({
   const result = listPacksForActor(getDb(), actor, { includeInactive, q });
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-5xl flex-col p-4 sm:p-6">
+    <main className="app-shell flex max-w-6xl flex-col">
       <AppHeader
         title="Items & Packs"
         backHref="/inventory"
@@ -77,24 +79,16 @@ export default async function InventoryPacksPage({
       </form>
 
       {params.created ? (
-        <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-lg text-emerald-900">
-          Pack {params.created} was created.
-        </p>
+        <AutoDismissAlert>Pack {params.created} was created.</AutoDismissAlert>
       ) : null}
       {params.updated ? (
-        <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-lg text-emerald-900">
-          Pack {params.updated} was updated.
-        </p>
+        <AutoDismissAlert>Pack {params.updated} was updated.</AutoDismissAlert>
       ) : null}
       {params.deleted ? (
-        <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-lg text-emerald-900">
-          Pack {params.deleted} was permanently deleted.
-        </p>
+        <AutoDismissAlert>Pack {params.deleted} was permanently deleted.</AutoDismissAlert>
       ) : null}
       {params.archived ? (
-        <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-lg text-emerald-900">
-          Pack {params.archived} was archived.
-        </p>
+        <AutoDismissAlert>Pack {params.archived} was archived.</AutoDismissAlert>
       ) : null}
 
       <div className="mb-5 flex flex-wrap items-center gap-3">
@@ -122,9 +116,7 @@ export default async function InventoryPacksPage({
       </p>
 
       {result.packs.length === 0 ? (
-        <p className="rounded-2xl bg-white p-6 text-lg text-slate-600 ring-1 ring-slate-200">
-          No packs yet.
-        </p>
+        <section className="app-card"><EmptyState title="No packs yet" description="New scanning packs will appear here." /></section>
       ) : (
         <ul className="flex flex-col gap-3">
           {result.packs.map((pack) => (

@@ -1,8 +1,9 @@
-import Link from 'next/link';
 import { readSettings } from '@/actions/settings';
 import { requirePageAdmin } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import { AppHeader } from '../_components/app-header';
+import { LockIcon } from '../_components/icons';
+import { ButtonLink, Card } from '../_components/ui';
 import { SettingsForm } from './settings-form';
 
 export const dynamic = 'force-dynamic';
@@ -21,26 +22,21 @@ export default async function SettingsPage() {
   const settings = readSettings(getDb(), actor);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-4xl flex-col p-4 sm:p-6">
+    <main className="app-shell flex max-w-5xl flex-col">
       <AppHeader
         title="Settings"
         backHref="/"
         backLabel="Home"
         account={{ username: account.username, role: account.role }}
       />
-      <section className="mb-6 rounded-2xl bg-white p-5 ring-1 ring-slate-200 sm:p-6">
+      <Card className="mb-6 p-5 sm:p-6">
         <h2 className="text-xl font-semibold">Account Settings</h2>
         <p className="mt-1 max-w-xl text-base text-slate-600">
           Change the password of either shared account. Other signed-in devices for that account
           are logged out.
         </p>
-        <Link
-          href="/settings/password"
-          className="mt-3 inline-flex rounded-xl border-2 border-slate-900 px-6 py-3 text-lg font-semibold"
-        >
-          Change Password
-        </Link>
-      </section>
+        <ButtonLink href="/settings/password" variant="secondary" className="mt-4"><LockIcon size={19} /> Change Password</ButtonLink>
+      </Card>
       <SettingsForm settings={settings} />
     </main>
   );

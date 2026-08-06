@@ -3,6 +3,8 @@ import { listInventoryHistoryForActor } from '@/actions/inventory-history';
 import { requirePage } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import { AppHeader } from '../../../_components/app-header';
+import { AutoDismissAlert } from '../../../_components/auto-dismiss-alert';
+import { EmptyState, StatusBadge } from '../../../_components/ui';
 import { formatDateTime } from '../../../operations/_components/format';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +19,7 @@ export default async function InventoryHistoryPage({
   const counts = listInventoryHistoryForActor(getDb(), actor);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-5xl flex-col p-4 sm:p-6">
+    <main className="app-shell flex max-w-6xl flex-col">
       <AppHeader
         title="Inventory History"
         backHref="/inventory/count"
@@ -25,15 +27,13 @@ export default async function InventoryHistoryPage({
         account={{ username: account.username, role: account.role }}
       />
       {deleted ? (
-        <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-lg text-emerald-900">
+        <AutoDismissAlert>
           Inventory Count {deleted} was deleted and its adjustments were reversed.
-        </p>
+        </AutoDismissAlert>
       ) : null}
 
       {counts.length === 0 ? (
-        <p className="rounded-2xl bg-white p-6 text-lg text-slate-600 ring-1 ring-slate-200">
-          No completed inventory counts yet.
-        </p>
+        <section className="app-card"><EmptyState title="No completed inventory counts yet" description="Completed counts will appear here." /></section>
       ) : (
         <ul className="flex flex-col gap-3">
           {counts.map((count) => (
@@ -51,9 +51,7 @@ export default async function InventoryHistoryPage({
                     {count.countedItems} items checked · {count.differenceCount} differences
                   </p>
                 </div>
-                <span className="rounded-full bg-emerald-100 px-4 py-2 font-semibold text-emerald-900">
-                  Completed
-                </span>
+                <StatusBadge tone="success">Completed</StatusBadge>
                 <Link
                   href={`/inventory/count/history/${count.id}`}
                   className="rounded-xl border border-slate-300 px-5 py-3 text-lg font-semibold"

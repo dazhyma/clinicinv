@@ -66,7 +66,7 @@ export function SettingsForm({ settings }: { settings: SettingsView }) {
         />
       </SettingsSection>
 
-      <div className="sticky bottom-3 rounded-2xl bg-white/95 p-4 shadow-lg ring-1 ring-slate-200 backdrop-blur">
+      <div className="app-card sticky bottom-3 z-10 bg-[color:rgb(252_250_247/0.94)] p-4 shadow-[var(--shadow-raised)] backdrop-blur-md">
         <SubmitButton>Save Settings</SubmitButton>
       </div>
     </form>
@@ -83,7 +83,7 @@ function SettingsSection({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-2xl bg-white p-5 ring-1 ring-slate-200 sm:p-6">
+    <section className="app-card p-5 sm:p-6">
       <h2 className="text-xl font-semibold">{title}</h2>
       <p className="mt-1 mb-5 text-slate-600">{description}</p>
       {children}
@@ -106,7 +106,7 @@ function ToggleRow({
 }) {
   return (
     <div>
-      <label className="flex min-h-16 cursor-pointer items-center justify-between gap-5 rounded-xl bg-slate-50 p-4">
+      <label className="flex min-h-20 cursor-pointer items-center justify-between gap-5 rounded-xl border border-transparent bg-[var(--color-surface-muted)]/55 p-4 transition hover:border-slate-300">
         <span>
           <span className="block font-semibold">{label}</span>
           <span className="mt-1 block text-sm text-slate-600">{description}</span>
@@ -119,7 +119,7 @@ function ToggleRow({
             defaultChecked={checked}
             className="peer sr-only"
           />
-          <span className="block h-8 w-14 rounded-full bg-slate-300 transition peer-checked:bg-emerald-600" />
+          <span className="block h-8 w-14 rounded-full bg-slate-300 ring-offset-2 transition peer-focus-visible:ring-3 peer-focus-visible:ring-[var(--color-focus)] peer-checked:bg-[var(--color-primary)]" />
           <span className="absolute top-1 left-1 h-6 w-6 rounded-full bg-white shadow transition peer-checked:translate-x-6" />
         </span>
       </label>

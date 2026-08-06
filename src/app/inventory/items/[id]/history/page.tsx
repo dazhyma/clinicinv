@@ -28,7 +28,7 @@ export default async function ItemHistoryPage({
   if (!result) notFound();
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-5xl flex-col p-4 sm:p-6">
+    <main className="app-shell flex max-w-6xl flex-col">
       <AppHeader
         title="Item History"
         subtitle={`${result.item.name} · ${result.item.internalCode}`}

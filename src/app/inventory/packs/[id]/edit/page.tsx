@@ -36,7 +36,7 @@ export default async function EditPackPage({ params }: { params: Promise<{ id: s
   const { items } = listItemsForActor(db, actor, { includeInactive: true });
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col p-4 sm:p-6">
+    <main className="app-shell flex max-w-4xl flex-col">
       <AppHeader
         title={pack.name}
         subtitle="Changes apply to future scans only."

@@ -75,7 +75,7 @@ export function ManualSearchDialog({
 
   return (
     <div
-      className="fixed inset-0 z-30 flex items-start justify-center bg-slate-900/60 p-3 sm:p-6"
+      className="modal-backdrop fixed inset-0 z-30 flex items-start justify-center bg-slate-900/60 p-3 sm:p-6"
       onKeyDown={(event) => {
         if (event.key === 'Escape') onClose();
       }}
@@ -84,7 +84,7 @@ export function ManualSearchDialog({
         role="dialog"
         aria-modal="true"
         aria-label="Manual Item Search"
-        className="flex max-h-full w-full max-w-2xl flex-col gap-4 overflow-hidden rounded-2xl bg-white p-4 shadow-xl sm:p-6"
+        className="modal-panel app-card flex max-h-full w-full max-w-2xl flex-col gap-4 overflow-hidden p-4 shadow-[var(--shadow-raised)] sm:p-6"
       >
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-2xl font-semibold">Manual Item Search</h2>

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { PackView } from '@/actions/packs';
 import { ItemPhoto } from '../../_components/item-photo';
+import { ButtonLink, StatusBadge } from '../../_components/ui';
 
 /**
  * Пак в списке (§6.1, §6.2, §6.4).
@@ -18,7 +19,7 @@ import { ItemPhoto } from '../../_components/item-photo';
  */
 export function PackCard({ pack, canEdit }: { pack: PackView; canEdit: boolean }) {
   return (
-    <li className="flex flex-wrap items-start gap-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+    <li className="app-card flex flex-wrap items-start gap-4 p-4">
       <ItemPhoto photoUrl={pack.photoUrl} name={pack.name} size={64} />
 
       <div className="min-w-56 flex-1">
@@ -30,13 +31,9 @@ export function PackCard({ pack, canEdit }: { pack: PackView; canEdit: boolean }
             {pack.name}
           </Link>
           {pack.archivedAtMs ? (
-            <span className="rounded-full bg-red-100 px-3 py-1 text-sm font-semibold text-red-800">
-              Archived
-            </span>
+            <StatusBadge tone="danger">Archived</StatusBadge>
           ) : pack.status === 'inactive' ? (
-            <span className="rounded-full bg-slate-200 px-3 py-1 text-sm font-semibold text-slate-700">
-              Inactive
-            </span>
+            <StatusBadge>Inactive</StatusBadge>
           ) : null}
         </div>
 
@@ -75,26 +72,29 @@ export function PackCard({ pack, canEdit }: { pack: PackView; canEdit: boolean }
       </div>
 
       <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-        <Link
+        <ButtonLink
           href={`/inventory/packs/${pack.id}`}
-          className="flex-1 rounded-xl border border-slate-300 px-5 py-3 text-center text-lg font-medium sm:flex-none"
+          variant="secondary"
+          className="flex-1 sm:flex-none"
         >
           View
-        </Link>
+        </ButtonLink>
         {canEdit && !pack.archivedAtMs ? (
-          <Link
+          <ButtonLink
             href={`/inventory/packs/${pack.id}/edit`}
-            className="flex-1 rounded-xl border border-slate-300 px-5 py-3 text-center text-lg font-medium sm:flex-none"
+            variant="secondary"
+            className="flex-1 sm:flex-none"
           >
             Edit
-          </Link>
+          </ButtonLink>
         ) : null}
-        <Link
+        <ButtonLink
           href={`/inventory/packs/${pack.id}/barcode`}
-          className="flex-1 rounded-xl border border-slate-300 px-5 py-3 text-center text-lg font-medium sm:flex-none"
+          variant="secondary"
+          className="flex-1 sm:flex-none"
         >
           View Barcode
-        </Link>
+        </ButtonLink>
       </div>
     </li>
   );

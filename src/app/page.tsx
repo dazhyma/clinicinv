@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { requirePage } from '@/auth/guards';
 import { AppHeader } from './_components/app-header';
+import { BoxesIcon, ChevronRightIcon, ClipboardIcon, SettingsIcon } from './_components/icons';
+import { buttonClassName } from './_components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,31 +19,31 @@ export default async function HomePage() {
   const isAdmin = account.role === 'Admin';
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-4xl flex-col p-4 sm:p-6">
+    <main className="app-shell flex max-w-5xl flex-col">
       <AppHeader
         title="Clinic Inventory"
         account={{ username: account.username, role: account.role }}
       />
 
-      <div className="grid flex-1 content-start gap-4 sm:grid-cols-2">
+      <div className="grid flex-1 content-start gap-5 sm:grid-cols-2">
         <Link
           href="/inventory"
-          className="flex min-h-44 flex-col justify-center rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 transition active:ring-2 active:ring-slate-400"
+          className="app-card app-card-interactive group flex min-h-52 flex-col justify-between bg-[var(--color-surface-sage)] p-6 sm:p-7"
         >
-          <span className="text-3xl font-semibold">Inventory</span>
-          <span className="mt-2 text-lg text-slate-600">
-            Manage items, stock, packs, and barcodes
-          </span>
+          <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-white/70 text-[var(--color-primary-active)]"><BoxesIcon size={27} /></span>
+          <span className="mt-7 text-3xl font-bold">Inventory</span>
+          <span className="mt-2 text-base text-slate-600">Manage items, stock, packs, and barcodes</span>
+          <span className="mt-5 inline-flex items-center gap-1.5 font-semibold text-[var(--color-primary-active)]">Open Inventory <ChevronRightIcon className="transition-transform group-hover:translate-x-1" size={19} /></span>
         </Link>
 
         <Link
           href="/operations"
-          className="flex min-h-44 flex-col justify-center rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 transition active:ring-2 active:ring-slate-400"
+          className="app-card app-card-interactive group flex min-h-52 flex-col justify-between bg-[var(--color-surface-blue)] p-6 sm:p-7"
         >
-          <span className="text-3xl font-semibold">Operations</span>
-          <span className="mt-2 text-lg text-slate-600">
-            Start scanning or review operations
-          </span>
+          <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-white/70 text-blue-800"><ClipboardIcon size={27} /></span>
+          <span className="mt-7 text-3xl font-bold">Operations</span>
+          <span className="mt-2 text-base text-slate-600">Start scanning or review operations</span>
+          <span className="mt-5 inline-flex items-center gap-1.5 font-semibold text-blue-800">Open Operations <ChevronRightIcon className="transition-transform group-hover:translate-x-1" size={19} /></span>
         </Link>
       </div>
 
@@ -49,9 +51,9 @@ export default async function HomePage() {
         <div className="mt-6">
           <Link
             href="/settings"
-            className="inline-flex items-center rounded-lg border border-slate-300 px-4 py-2 text-slate-600"
+            className={buttonClassName({ variant: 'secondary' })}
           >
-            Settings
+            <SettingsIcon size={19} /> Settings
           </Link>
         </div>
       ) : null}

@@ -1,66 +1,460 @@
 @import 'tailwindcss';
 
 /*
- * §14.1/§14.2: интерфейс рассчитан на сенсорный экран в операционной —
- * крупные элементы, высокая контрастность. Базовый размер шрифта увеличен,
- * минимальная цель нажатия — 48 px.
+ * UI redesign: одна палитра и один набор размеров для всего приложения.
+ * Названия исходят из приложенной палитры Sherwin-Williams; значения немного
+ * скорректированы для контраста интерфейса (§3, §16 нового ТЗ).
  */
+:root {
+  --color-page-background: #f3f0ea;
+  --color-surface: #fcfaf7;
+  --color-surface-raised: #fffdfa;
+  --color-surface-muted: #e8e3da;
+  --color-surface-sage: #d8deda;
+  --color-surface-blue: #d7dfde;
+  --color-surface-rose: #e6dad4;
+  --color-surface-beige: #ded5c7;
+
+  --color-text-primary: #303232;
+  --color-text-secondary: #626b69;
+  --color-text-disabled: #919895;
+
+  --color-primary: #657975;
+  --color-primary-hover: #566965;
+  --color-primary-active: #495b57;
+  --color-primary-soft: #d7e0dd;
+  --color-secondary: #a6b1af;
+  --color-secondary-hover: #929f9c;
+
+  --color-border: #d2d0c9;
+  --color-border-strong: #adb5b2;
+  --color-focus: #657975;
+  --color-success: #6f8a75;
+  --color-success-soft: #dee9e0;
+  --color-warning: #977343;
+  --color-warning-soft: #f1e6d4;
+  --color-danger: #a45f5f;
+  --color-danger-hover: #8e4e4e;
+  --color-danger-soft: #f1dede;
+  --color-info: #667d82;
+  --color-info-soft: #dce6e6;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --radius-control: 0.7rem;
+  --radius-card: 0.875rem;
+  --radius-pill: 999px;
+  --shadow-card: 0 4px 16px rgb(48 50 50 / 0.055);
+  --shadow-raised: 0 14px 40px rgb(48 50 50 / 0.13);
+  --transition-fast: 150ms;
+  --transition-normal: 220ms;
+  --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Старые utility-классы также получают единую палитру, поэтому ни один
+ * существующий экран не остаётся в прежней холодной slate/white теме. */
 @theme {
-  --color-ok: oklch(0.62 0.17 149);
-  --color-danger: oklch(0.58 0.22 27);
+  --color-white: #fcfaf7;
+  --color-slate-50: #f3f0ea;
+  --color-slate-100: #e8e3da;
+  --color-slate-200: #d2d0c9;
+  --color-slate-300: #b8bdba;
+  --color-slate-400: #929a97;
+  --color-slate-500: #747d7a;
+  --color-slate-600: #626b69;
+  --color-slate-700: #4f5654;
+  --color-slate-800: #3c403f;
+  --color-slate-900: #303232;
+  --color-slate-950: #272929;
+
+  --color-emerald-50: #eef4ef;
+  --color-emerald-100: #dee9e0;
+  --color-emerald-200: #c8dacb;
+  --color-emerald-300: #a8c2ae;
+  --color-emerald-400: #88a890;
+  --color-emerald-500: #78977f;
+  --color-emerald-600: #6f8a75;
+  --color-emerald-700: #58705e;
+  --color-emerald-800: #46594b;
+  --color-emerald-900: #37463b;
+  --color-emerald-950: #29332c;
+
+  --color-red-50: #fbf2f1;
+  --color-red-100: #f1dede;
+  --color-red-200: #e4c1c1;
+  --color-red-300: #d5a0a0;
+  --color-red-400: #bb7b7b;
+  --color-red-500: #aa6868;
+  --color-red-600: #a45f5f;
+  --color-red-700: #8e4e4e;
+  --color-red-800: #733f3f;
+  --color-red-900: #5c3535;
+  --color-red-950: #432626;
+
+  --color-amber-50: #faf5ec;
+  --color-amber-100: #f1e6d4;
+  --color-amber-200: #e6d2ae;
+  --color-amber-300: #d4b77f;
+  --color-amber-400: #b9935d;
+  --color-amber-500: #a7814e;
+  --color-amber-600: #977343;
+  --color-amber-700: #795b36;
+  --color-amber-800: #60482f;
+  --color-amber-900: #4d3a28;
+  --color-amber-950: #38291c;
+
+  --color-blue-50: #eff4f4;
+  --color-blue-100: #dce6e6;
+  --color-blue-200: #c6d6d6;
+  --color-blue-300: #a9c0c1;
+  --color-blue-400: #89a4a7;
+  --color-blue-500: #748f93;
+  --color-blue-600: #667d82;
+  --color-blue-700: #53676b;
+  --color-blue-800: #445356;
+  --color-blue-900: #374446;
+  --color-blue-950: #283133;
+
+  --color-sky-50: #eff4f4;
+  --color-sky-100: #dce6e6;
+  --color-sky-200: #c6d6d6;
+  --color-sky-300: #a9c0c1;
+  --color-sky-600: #667d82;
+  --color-sky-900: #374446;
+  --color-sky-950: #283133;
+
+  --color-indigo-50: #f0f2f1;
+  --color-indigo-100: #d7dfde;
+  --color-indigo-200: #c0cecc;
+  --color-indigo-400: #829b98;
+  --color-indigo-600: #657975;
+  --color-indigo-800: #465754;
+  --color-indigo-900: #374542;
+
+  --radius-lg: 0.7rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 0.875rem;
+  --radius-3xl: 1rem;
 }
 
 html {
+  min-width: 320px;
+  background: var(--color-page-background);
   font-size: 17px;
 }
 
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+  min-height: 100dvh;
+  margin: 0;
+  background: var(--color-page-background);
+  color: var(--color-text-primary);
+  font-family: var(--font-manrope, 'Manrope'), 'Inter', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', sans-serif;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/*
- * Появление страницы — только прозрачность, БЕЗ transform.
- *
- * Сдвиг `translateY(5px)` здесь давал рывок в самом конце анимации. Механика:
- * из-за transform браузер выносит main в отдельный слой на GPU, растрирует его
- * текст один раз и дальше двигает слой целиком; по завершении анимации слой
- * уничтожается, и текст перерисовывается заново с обычным субпиксельным
- * сглаживанием. Разница в растеризации приходится на один кадр и читается как
- * дёрганье — тем заметнее, что ease-out к концу замедляет движение до долей
- * пикселя, и глаз в этот момент следит именно за медленной деталью.
- *
- * Анимация прозрачности тоже создаёт слой, но при ней ничего не смещается,
- * поэтому уничтожение слоя незаметно. Transform сюда возвращать не нужно:
- * на тексте он снова начнёт дёргаться, причём по-разному на разных устройствах.
- */
+::selection {
+  background: var(--color-primary-soft);
+  color: var(--color-text-primary);
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.18;
+  letter-spacing: -0.025em;
+}
+
+/* Плавное появление без transform: смещение текста вызывало финальный рывок
+ * после уничтожения GPU-слоя. Более мягкая кривая и blur дают ощущение движения
+ * без изменения геометрии страницы. */
 main {
-  animation: fade-in 220ms ease-out both;
+  animation: page-enter 320ms var(--ease-standard) both;
 }
 
 .modal-backdrop {
-  animation: fade-in 170ms ease-out both;
+  animation: backdrop-enter 200ms ease-out both;
 }
 
 .modal-panel {
-  animation: modal-enter 190ms ease-out both;
+  animation: modal-enter 260ms var(--ease-standard) both;
 }
 
-.print-only {
-  display: none;
+button,
+a,
+input,
+select,
+textarea {
+  transition:
+    color var(--transition-fast) ease,
+    background-color var(--transition-fast) ease,
+    border-color var(--transition-fast) ease,
+    box-shadow var(--transition-fast) ease,
+    opacity var(--transition-fast) ease,
+    transform var(--transition-fast) var(--ease-standard);
 }
 
 button,
 a[role='button'],
 input[type='submit'] {
   min-height: 48px;
+  touch-action: manipulation;
 }
 
-/*
- * §5.6: печатная страница этикетки без навигации, фонов и лишних элементов.
- *
- * На экране этикетка обведена пунктиром, чтобы были видны её границы; на бумаге
- * рамки нет — печатается только то, что относится к этикетке.
- */
+button:not(:disabled):active,
+a[role='button']:active {
+  transform: scale(0.985);
+}
+
+:where(button, a, input, select, textarea):focus-visible {
+  outline: 3px solid rgb(101 121 117 / 0.34);
+  outline-offset: 2px;
+}
+
+:where(input:not([type='checkbox']):not([type='radio']), select, textarea) {
+  border-color: var(--color-border);
+  background-color: var(--color-surface-raised);
+  color: var(--color-text-primary);
+  box-shadow: 0 1px 2px rgb(48 50 50 / 0.025);
+}
+
+:where(input:not([type='checkbox']):not([type='radio']), select) {
+  min-height: 48px;
+}
+
+:where(input:not([type='checkbox']):not([type='radio']), select, textarea):hover:not(:disabled) {
+  border-color: var(--color-border-strong);
+}
+
+:where(input:not([type='checkbox']):not([type='radio']), select, textarea):focus {
+  border-color: var(--color-focus);
+  box-shadow: 0 0 0 3px rgb(101 121 117 / 0.15);
+  outline: none;
+}
+
+:where(input, select, textarea):disabled {
+  background: var(--color-surface-muted);
+  color: var(--color-text-disabled);
+  cursor: not-allowed;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-text-disabled);
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--color-primary);
+}
+
+/* Общие примитивы. Новые и постепенно переведённые экраны используют только
+ * эти классы, а палитра legacy utility-классов выше страхует редкие состояния. */
+.app-shell {
+  width: min(100%, 80rem);
+  min-height: 100dvh;
+  margin-inline: auto;
+  padding: 1rem;
+}
+
+.app-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.app-card-interactive:hover {
+  border-color: var(--color-border-strong);
+  box-shadow: 0 8px 24px rgb(48 50 50 / 0.09);
+  transform: translateY(-2px);
+}
+
+.ui-button {
+  display: inline-flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  padding: 0.7rem 1.15rem;
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.ui-button-primary {
+  background: var(--color-primary);
+  color: var(--color-surface-raised);
+  box-shadow: 0 3px 10px rgb(73 91 87 / 0.14);
+}
+
+.ui-button-primary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+  box-shadow: 0 5px 15px rgb(73 91 87 / 0.2);
+}
+
+.ui-button-secondary {
+  border-color: var(--color-border);
+  background: var(--color-surface-raised);
+  color: var(--color-text-primary);
+}
+
+.ui-button-secondary:hover:not(:disabled) {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-muted);
+}
+
+.ui-button-soft {
+  background: var(--color-primary-soft);
+  color: var(--color-primary-active);
+}
+
+.ui-button-soft:hover:not(:disabled) {
+  background: var(--color-secondary);
+  color: var(--color-text-primary);
+}
+
+.ui-button-danger {
+  background: var(--color-danger);
+  color: var(--color-surface-raised);
+}
+
+.ui-button-danger:hover:not(:disabled) {
+  background: var(--color-danger-hover);
+}
+
+.ui-button-compact {
+  min-height: 40px;
+  padding: 0.5rem 0.85rem;
+  font-size: 0.875rem;
+}
+
+.ui-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.ui-field {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  padding: 0.7rem 0.9rem;
+  font-size: 1rem;
+}
+
+.ui-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--color-text-primary);
+  font-size: 0.875rem;
+  font-weight: 650;
+}
+
+.ui-helper {
+  margin-top: 0.35rem;
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+}
+
+.ui-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  padding: 0.85rem 1rem;
+}
+
+.ui-alert-success {
+  border-color: #bfd2c3;
+  background: var(--color-success-soft);
+  color: #3f5945;
+}
+
+.ui-alert-warning {
+  border-color: #dfc89f;
+  background: var(--color-warning-soft);
+  color: #654b2c;
+}
+
+.ui-alert-danger {
+  border-color: #dfb9b9;
+  background: var(--color-danger-soft);
+  color: #733f3f;
+}
+
+.ui-alert-info {
+  border-color: #bdd0d1;
+  background: var(--color-info-soft);
+  color: #445b60;
+}
+
+.ui-badge {
+  display: inline-flex;
+  min-height: 1.75rem;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: var(--radius-pill);
+  padding: 0.25rem 0.7rem;
+  font-size: 0.8125rem;
+  font-weight: 650;
+  line-height: 1.1;
+}
+
+.ui-empty-state {
+  display: grid;
+  justify-items: center;
+  gap: 0.6rem;
+  padding: 2.5rem 1.25rem;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+/* Совместимость старой разметки: визуально приводим распространённые карточки,
+ * кнопки и модальные окна к тем же токенам без изменения поведения форм. */
+.rounded-2xl.bg-white,
+.rounded-xl.bg-white,
+.bg-white.ring-1 {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.bg-slate-900:not(.camera-surface) {
+  background-color: var(--color-primary);
+}
+
+.hover\:bg-slate-800:hover {
+  background-color: var(--color-primary-hover);
+}
+
+.border-slate-900 {
+  border-color: var(--color-primary);
+}
+
+.shadow-xl,
+.shadow-2xl {
+  box-shadow: var(--shadow-raised);
+}
+
+.print-only {
+  display: none;
+}
+
+/* На экране этикетка обведена, на бумаге печатается только контрастный макет. */
 .label-graphic svg {
   display: block;
   width: 100%;
@@ -68,7 +462,9 @@ input[type='submit'] {
 }
 
 .label {
-  outline: 1px dashed #cbd5e1;
+  background: #fff;
+  outline: 1px dashed var(--color-border-strong);
+  color: #000;
 }
 
 @page {
@@ -80,7 +476,18 @@ input[type='submit'] {
   margin: 0;
 }
 
-@keyframes fade-in {
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    filter: blur(1.5px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+@keyframes backdrop-enter {
   from {
     opacity: 0;
   }
@@ -90,6 +497,71 @@ input[type='submit'] {
   from {
     opacity: 0;
     transform: translateY(8px) scale(0.99);
+  }
+}
+
+@media (min-width: 640px) {
+  .app-shell {
+    padding: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .app-shell {
+    padding: 2rem;
+  }
+}
+
+@media screen and (max-width: 639px) {
+  .ui-button {
+    max-width: 100%;
+  }
+
+  table.responsive-table,
+  table.responsive-table thead,
+  table.responsive-table tbody,
+  table.responsive-table tr,
+  table.responsive-table th,
+  table.responsive-table td {
+    display: block;
+    width: 100%;
+  }
+
+  table.responsive-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+
+  table.responsive-table tr {
+    margin-bottom: 0.75rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-control);
+    padding: 0.75rem;
+    background: var(--color-surface-raised);
+  }
+
+  table.responsive-table td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.35rem 0;
+    text-align: right;
+  }
+
+  table.responsive-table td::before {
+    content: attr(data-label);
+    color: var(--color-text-secondary);
+    font-size: 0.8125rem;
+    font-weight: 650;
+    text-align: left;
+  }
+
+  table.responsive-table tfoot td[colspan] {
+    display: none;
   }
 }
 
@@ -105,6 +577,8 @@ input[type='submit'] {
   *::after {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
   }
 }
 
@@ -115,7 +589,13 @@ input[type='submit'] {
 
   html,
   body {
-    background: #fff;
+    background: #fff !important;
+    color: #000;
+  }
+
+  main {
+    animation: none;
+    filter: none;
   }
 
   .label-sheet {
@@ -126,8 +606,8 @@ input[type='submit'] {
   }
 
   .label {
+    background: #fff;
     outline: none;
-    /* Этикетка не должна разрываться между страницами. */
     break-inside: avoid;
     page-break-inside: avoid;
   }
@@ -145,6 +625,7 @@ input[type='submit'] {
   .bulk-label-page {
     page: bulk-label-sheet;
     margin: 0;
+    background: #fff;
     box-shadow: none;
     outline: none;
     break-after: page;

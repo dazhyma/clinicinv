@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { getOperationSummary } from '@/actions/operations';
 import { requirePage } from '@/auth/guards';
 import { getDb } from '@/db/client';
+import { ArrowLeftIcon } from '../../../_components/icons';
 import { CopySummaryButton } from '../../_components/copy-summary';
 import { PrintSummaryButton } from '../../_components/print-summary';
 import { SummaryTable } from '../../_components/summary-table';
@@ -37,12 +38,12 @@ export default async function OperationSummaryPage({
 
   return (
     <main>
-      <section className="no-print mx-auto flex w-full max-w-3xl flex-col gap-5 p-4 sm:p-6">
+      <section className="app-shell no-print flex max-w-4xl flex-col gap-5">
         <Link
           href={`/operations/${operationId}`}
-          className="text-base text-slate-600 underline underline-offset-4"
+          className="inline-flex w-fit items-center gap-2 rounded-lg px-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
         >
-          <span aria-hidden="true">←</span> Back to operation
+          <ArrowLeftIcon size={18} /> Back to operation
         </Link>
 
         <div>

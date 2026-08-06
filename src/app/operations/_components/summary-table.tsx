@@ -14,9 +14,9 @@ import type { OperationSummaryView } from '@/actions/operations';
  */
 export function SummaryTable({ summary }: { summary: OperationSummaryView }) {
   return (
-    <table className="w-full border-collapse text-left">
+    <table className="responsive-table w-full border-collapse text-left">
       <thead>
-        <tr className="border-b-2 border-slate-900">
+        <tr className="border-b border-slate-300 bg-slate-100">
           <th scope="col" className="py-2 pr-3 text-base font-semibold">
             Item
           </th>
@@ -42,9 +42,9 @@ export function SummaryTable({ summary }: { summary: OperationSummaryView }) {
       <tbody>
         {summary.lines.map((line) => (
           <tr key={line.itemId} className="border-b border-slate-200">
-            <td className="py-2 pr-3 text-lg">{line.name}</td>
-            <td className="py-2 pr-3 font-mono text-base">{line.reference ?? '—'}</td>
-            <td className="py-2 pr-3 text-right text-lg font-semibold">
+            <td data-label="Item" className="py-2 pr-3 text-lg">{line.name}</td>
+            <td data-label="Reference" className="py-2 pr-3 font-mono text-base">{line.reference ?? '—'}</td>
+            <td data-label="Quantity" className="py-2 pr-3 text-right text-lg font-semibold">
               {line.quantity}
               <span className="ml-1 text-base font-normal text-slate-600">
                 {line.unitOfMeasurement}
@@ -54,8 +54,8 @@ export function SummaryTable({ summary }: { summary: OperationSummaryView }) {
               <>
                 {/* Стоимость единицы отсутствует, если предмет попал в операцию
                     по разным ценам: усреднять снимки нельзя (§11.3, D-5). */}
-                <td className="py-2 pr-3 text-right text-lg">{line.unitCostFormatted ?? '—'}</td>
-                <td className="py-2 text-right text-lg">{line.lineTotalFormatted ?? '—'}</td>
+                <td data-label="Unit cost" className="py-2 pr-3 text-right text-lg">{line.unitCostFormatted ?? '—'}</td>
+                <td data-label="Line total" className="py-2 text-right text-lg">{line.lineTotalFormatted ?? '—'}</td>
               </>
             ) : null}
           </tr>
@@ -68,7 +68,7 @@ export function SummaryTable({ summary }: { summary: OperationSummaryView }) {
             <td colSpan={4} className="py-3 pr-3 text-right text-lg font-semibold">
               Total
             </td>
-            <td className="py-3 text-right text-xl font-bold">{summary.totalCostFormatted}</td>
+            <td data-label="Total" className="py-3 text-right text-xl font-bold">{summary.totalCostFormatted}</td>
           </tr>
         </tfoot>
       ) : null}

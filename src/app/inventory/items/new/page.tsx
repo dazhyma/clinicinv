@@ -18,7 +18,7 @@ export default async function NewItemPage() {
   const options = itemFormOptions(getDb());
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col p-4 sm:p-6">
+    <main className="app-shell flex max-w-4xl flex-col">
       <AppHeader
         title="Add New Item"
         subtitle="The system creates a permanent Item Code and uses it for the barcode."

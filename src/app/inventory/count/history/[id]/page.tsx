@@ -22,7 +22,7 @@ export default async function InventoryHistoryDetailPage({
   if (!result) notFound();
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-6xl flex-col p-4 sm:p-6">
+    <main className="app-shell flex max-w-7xl flex-col">
       <AppHeader
         title={result.summary.internalCode}
         subtitle="Completed Inventory Count"

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { ItemView } from '@/actions/items';
 import { ItemPhoto } from '../../_components/item-photo';
+import { ButtonLink, StatusBadge } from '../../_components/ui';
 
 /**
  * Карточка предмета в списке (§5.2).
@@ -31,8 +32,8 @@ export function ItemCard({
 
   return (
     <li
-      className={`flex flex-wrap items-center gap-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ${
-        lowStock ? 'ring-2 ring-amber-400' : 'ring-slate-200'
+      className={`app-card flex flex-wrap items-center gap-4 p-4 ${
+        lowStock ? 'border-amber-300 bg-amber-50/50' : ''
       }`}
     >
       <ItemPhoto photoUrl={item.photoUrl} name={item.name} size={64} />
@@ -46,18 +47,12 @@ export function ItemCard({
             {item.name}
           </Link>
           {lowStock ? (
-            <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-900">
-              Low stock
-            </span>
+            <StatusBadge tone="warning">Low stock</StatusBadge>
           ) : null}
           {item.archivedAtMs ? (
-            <span className="rounded-full bg-red-100 px-3 py-1 text-sm font-semibold text-red-800">
-              Archived
-            </span>
+            <StatusBadge tone="danger">Archived</StatusBadge>
           ) : item.status === 'inactive' ? (
-            <span className="rounded-full bg-slate-200 px-3 py-1 text-sm font-semibold text-slate-700">
-              Inactive
-            </span>
+            <StatusBadge>Inactive</StatusBadge>
           ) : null}
         </div>
 
@@ -73,34 +68,38 @@ export function ItemCard({
       </div>
 
       <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-        <Link
+        <ButtonLink
           href={href()}
-          className="flex-1 rounded-xl border border-slate-300 px-5 py-3 text-center text-lg font-medium sm:flex-none"
+          variant="secondary"
+          className="flex-1 sm:flex-none"
         >
           View
-        </Link>
+        </ButtonLink>
         {canEdit && !item.archivedAtMs ? (
           <>
-            <Link
+            <ButtonLink
               href={href('/edit')}
-              className="flex-1 rounded-xl border border-slate-300 px-5 py-3 text-center text-lg font-medium sm:flex-none"
+              variant="secondary"
+              className="flex-1 sm:flex-none"
             >
               Edit
-            </Link>
-            <Link
+            </ButtonLink>
+            <ButtonLink
               href={href('/stock')}
-              className="flex-1 rounded-xl border border-slate-300 px-5 py-3 text-center text-lg font-medium sm:flex-none"
+              variant="soft"
+              className="flex-1 sm:flex-none"
             >
               Stock
-            </Link>
+            </ButtonLink>
           </>
         ) : null}
-        <Link
+        <ButtonLink
           href={href('/barcode')}
-          className="flex-1 rounded-xl border border-slate-300 px-5 py-3 text-center text-lg font-medium sm:flex-none"
+          variant="secondary"
+          className="flex-1 sm:flex-none"
         >
           View Barcode
-        </Link>
+        </ButtonLink>
       </div>
     </li>
   );

@@ -1,6 +1,7 @@
 'use client';
 
 import { useActionState, useState, type ReactNode } from 'react';
+import { Alert, Button } from '../../_components/ui';
 
 type DeleteState = { ok?: boolean; error?: string };
 
@@ -28,13 +29,13 @@ export function DeleteDialog({
 
   return (
     <>
-      <button
+      <Button
+        variant="danger"
         type="button"
         onClick={() => setOpen(true)}
-        className="rounded-xl bg-red-700 px-5 py-3 text-lg font-semibold text-white hover:bg-red-800"
       >
         {triggerLabel}
-      </button>
+      </Button>
       {open ? (
         <div
           className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4"
@@ -46,7 +47,7 @@ export function DeleteDialog({
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-dialog-title"
-            className="modal-panel w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl"
+            className="modal-panel app-card w-full max-w-lg p-6 shadow-[var(--shadow-raised)]"
           >
             <h2 id="delete-dialog-title" className="text-2xl font-bold">
               {title}
@@ -54,27 +55,25 @@ export function DeleteDialog({
             <p className="mt-3 text-slate-700">{description}</p>
             {details ? <div className="mt-4 rounded-xl bg-slate-50 p-4">{details}</div> : null}
             {state.error ? (
-              <p role="alert" className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-red-800">
-                {state.error}
-              </p>
+              <Alert tone="danger" className="mt-4">{state.error}</Alert>
             ) : null}
             <form action={formAction} className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
               <input type="hidden" name={fieldName} value={entityId} />
-              <button
+              <Button
+                variant="secondary"
                 type="button"
                 disabled={pending}
                 onClick={() => setOpen(false)}
-                className="rounded-xl border border-slate-300 px-5 py-3 text-lg font-semibold"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="danger"
                 type="submit"
                 disabled={pending}
-                className="rounded-xl bg-red-700 px-5 py-3 text-lg font-semibold text-white disabled:opacity-60"
               >
                 {pending ? 'Deleting…' : confirmLabel}
-              </button>
+              </Button>
             </form>
           </section>
         </div>

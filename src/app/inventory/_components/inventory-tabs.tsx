@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { buttonClassName } from '../../_components/ui';
 
 /** §5.1: раздел Inventory содержит как минимум вкладки Items и Packs. */
 export function InventoryTabs({ active }: { active: 'items' | 'packs' }) {
@@ -8,17 +9,16 @@ export function InventoryTabs({ active }: { active: 'items' | 'packs' }) {
   ] as const;
 
   return (
-    <nav aria-label="Inventory sections" className="mb-4 flex gap-2">
+    <nav aria-label="Inventory sections" className="mb-6 flex gap-2 rounded-xl bg-[var(--color-surface-muted)] p-1.5">
       {tabs.map((tab) => (
         <Link
           key={tab.id}
           href={tab.href}
           aria-current={active === tab.id ? 'page' : undefined}
-          className={`min-h-12 rounded-xl px-6 py-3 text-lg font-semibold ${
-            active === tab.id
-              ? 'bg-slate-900 text-white'
-              : 'border border-slate-300 bg-white text-slate-700'
-          }`}
+          className={buttonClassName({
+            variant: active === tab.id ? 'primary' : 'soft',
+            className: `flex-1 text-base sm:flex-none ${active === tab.id ? '' : 'bg-transparent'}`,
+          })}
         >
           {tab.label}
         </Link>

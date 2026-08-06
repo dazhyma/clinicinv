@@ -577,7 +577,7 @@ export function OperationScreen({
       }}
     >
       {/* --- Шапка операции (§7.4) --- */}
-      <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+      <section className="app-card flex flex-wrap items-center justify-between gap-3 p-4">
         <div>
           <p className="text-base text-slate-600">Case</p>
           <p className="font-mono text-3xl font-bold tracking-wider">{state.caseCode}</p>
@@ -651,7 +651,7 @@ export function OperationScreen({
       </div>
 
       {/* --- Список добавленных позиций (§7.4, §7.7) --- */}
-      <section className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+      <section className="app-card p-4">
         <h2 className="mb-3 text-xl font-semibold">Items in this operation</h2>
         {displayLines.length === 0 ? (
           <p className="text-lg text-slate-600">Nothing scanned yet.</p>
@@ -720,7 +720,7 @@ export function OperationScreen({
       </section>
 
       {/* --- Finish визуально отделён от обычных действий (§14.2) --- */}
-      <section className="mt-2 rounded-2xl border-2 border-slate-900 bg-white p-4">
+      <section className="app-card mt-2 border-[var(--color-primary)] p-4">
         <button
           type="button"
           onClick={() =>
@@ -772,7 +772,7 @@ export function OperationScreen({
       */}
       {finishOpen ? (
         <div
-          className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 p-4"
+          className="modal-backdrop fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 p-4"
           onKeyDown={(event) => {
             if (event.key === 'Escape' && !finishing) closeDialog(() => setFinishOpen(false));
           }}
@@ -781,7 +781,7 @@ export function OperationScreen({
             role="dialog"
             aria-modal="true"
             aria-label="Finish this operation?"
-            className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl"
+            className="modal-panel app-card w-full max-w-lg p-6 shadow-[var(--shadow-raised)]"
           >
             <h2 className="text-2xl font-semibold">Finish this operation?</h2>
             <p className="mt-3 text-lg text-slate-700">Quantities and costs will be locked.</p>

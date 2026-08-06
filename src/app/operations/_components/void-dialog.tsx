@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { Alert, Button } from '../../_components/ui';
 import { voidOperationServerAction } from '../actions';
 
 /**
@@ -52,25 +53,26 @@ export function VoidOperationButton({
 
   return (
     <>
-      <button
+      <Button
+        variant="danger"
         type="button"
         onClick={() => setOpen(true)}
         className={
           variant === 'block'
-            ? 'w-full rounded-xl border-2 border-red-700 px-6 py-4 text-lg font-semibold text-red-800'
-            : 'rounded-xl border border-red-300 px-5 py-3 text-lg font-medium text-red-800'
+            ? 'w-full'
+            : ''
         }
       >
         Void Operation
-      </button>
+      </Button>
 
       {open ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 p-4">
+        <div className="modal-backdrop fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 p-4">
           <div
             role="dialog"
             aria-modal="true"
             aria-label={`Void Operation ${caseCode}`}
-            className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl"
+            className="modal-panel app-card w-full max-w-lg p-6 shadow-[var(--shadow-raised)]"
           >
             <h2 className="text-2xl font-semibold">Void Operation {caseCode}?</h2>
             <p className="mt-3 text-lg text-slate-700">
@@ -93,28 +95,26 @@ export function VoidOperationButton({
             <p className="mt-1 text-sm text-slate-500">Never enter patient information.</p>
 
             {error ? (
-              <p role="alert" className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-lg text-red-800">
-                {error}
-              </p>
+              <Alert tone="danger" className="mt-4">{error}</Alert>
             ) : null}
 
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
-              <button
+              <Button
+                variant="secondary"
                 type="button"
                 onClick={() => setOpen(false)}
                 disabled={busy}
-                className="rounded-xl border border-slate-300 px-6 py-4 text-lg font-semibold"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="danger"
                 type="button"
                 onClick={confirm}
                 disabled={busy}
-                className="rounded-xl bg-red-700 px-6 py-4 text-lg font-semibold text-white disabled:opacity-60"
               >
                 {busy ? 'Voiding…' : 'Void Operation'}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

@@ -3,6 +3,8 @@ import { listItemsForActor } from '@/actions/items';
 import { requirePage } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import { AppHeader } from '../../_components/app-header';
+import { AutoDismissAlert } from '../../_components/auto-dismiss-alert';
+import { Alert, EmptyState } from '../../_components/ui';
 import { InventoryTabs } from '../_components/inventory-tabs';
 import { ItemCard } from '../_components/item-card';
 import { ItemFilters } from '../_components/item-filters';
@@ -50,7 +52,7 @@ export default async function InventoryCatalogPage({
   const returnTo = `/inventory/catalog${returnParams.size ? `?${returnParams}` : ''}`;
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-5xl flex-col p-4 sm:p-6">
+    <main className="app-shell flex max-w-6xl flex-col">
       <AppHeader
         title="Items & Packs"
         backHref="/inventory"
@@ -60,29 +62,19 @@ export default async function InventoryCatalogPage({
       <InventoryTabs active="items" />
 
       {params.created ? (
-        <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-lg text-emerald-900">
-          Item {params.created} was created.
-        </p>
+        <AutoDismissAlert>Item {params.created} was created.</AutoDismissAlert>
       ) : null}
       {params.updated ? (
-        <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-lg text-emerald-900">
-          Item {params.updated} was updated.
-        </p>
+        <AutoDismissAlert>Item {params.updated} was updated.</AutoDismissAlert>
       ) : null}
       {params.deleted ? (
-        <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-lg text-emerald-900">
-          Item {params.deleted} was permanently deleted.
-        </p>
+        <AutoDismissAlert>Item {params.deleted} was permanently deleted.</AutoDismissAlert>
       ) : null}
       {params.archived ? (
-        <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-lg text-emerald-900">
-          Item {params.archived} was archived.
-        </p>
+        <AutoDismissAlert>Item {params.archived} was archived.</AutoDismissAlert>
       ) : null}
       {params.error ? (
-        <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-lg text-red-800">
-          {params.error}
-        </p>
+        <Alert tone="danger" className="mb-5">{params.error}</Alert>
       ) : null}
 
       <div className="mb-4 flex flex-wrap gap-3">
@@ -113,11 +105,12 @@ export default async function InventoryCatalogPage({
       </div>
 
       {result.items.length === 0 ? (
-        <p className="rounded-2xl bg-white p-6 text-lg text-slate-600 ring-1 ring-slate-200">
-          {query.q || query.category || query.location || query.lowStock
-            ? 'No items match these filters.'
-            : 'No items yet.'}
-        </p>
+        <section className="app-card">
+          <EmptyState
+            title={query.q || query.category || query.location || query.lowStock ? 'No items found' : 'No items yet'}
+            description={query.q || query.category || query.location || query.lowStock ? 'Try changing the search or filters.' : 'New inventory items will appear here.'}
+          />
+        </section>
       ) : (
         <ul className="flex flex-col gap-3">
           {result.items.map((item) => (

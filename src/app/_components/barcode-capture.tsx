@@ -380,7 +380,7 @@ export const BarcodeCapture = forwardRef<BarcodeCaptureHandle, BarcodeCapturePro
 
     return (
       <>
-        <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+        <div className="app-card p-4">
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -431,7 +431,7 @@ export const BarcodeCapture = forwardRef<BarcodeCaptureHandle, BarcodeCapturePro
             role="dialog"
             aria-modal="true"
             aria-label="Camera barcode scanner"
-            className="fixed inset-x-0 top-0 z-50 flex h-[100dvh] flex-col overflow-hidden bg-black"
+            className="camera-surface fixed inset-x-0 top-0 z-50 flex h-[100dvh] flex-col overflow-hidden bg-black"
           >
             {/*
              * Высота задана в dvh, а не через inset-0.
@@ -451,7 +451,7 @@ export const BarcodeCapture = forwardRef<BarcodeCaptureHandle, BarcodeCapturePro
             />
             <canvas ref={canvasRef} className="hidden" aria-hidden="true" />
 
-            <div className="relative z-20 flex items-center justify-between gap-3 bg-gradient-to-b from-black/80 to-transparent p-4 pb-8 text-white">
+            <div className="relative z-20 flex items-center justify-between gap-3 bg-black/72 p-4 text-white backdrop-blur-[2px]">
               <div>
                 <p className="text-xl font-bold">Place one barcode inside the frame</p>
                 <p className="text-sm text-white/80">
@@ -512,7 +512,7 @@ function ConfirmationPanel({
 }) {
   if (phase === 'resolving') {
     return (
-      <section className="rounded-2xl bg-white p-5 text-slate-900 shadow-2xl">
+      <section className="app-card p-5 text-slate-900 shadow-[var(--shadow-raised)]">
         <p className="text-xl font-semibold">Checking barcode…</p>
         <p className="mt-1 text-base text-slate-600">No inventory has been changed.</p>
       </section>
@@ -533,7 +533,7 @@ function ConfirmationPanel({
 
   if (!target) {
     return (
-      <section className="rounded-2xl bg-white p-5 text-slate-900 shadow-2xl ring-2 ring-red-400">
+      <section className="app-card border-red-300 p-5 text-slate-900 shadow-[var(--shadow-raised)] ring-1 ring-red-300">
         <p role="alert" className="text-xl font-bold text-red-800">
           {error ?? 'Barcode not found'}
         </p>
@@ -562,7 +562,7 @@ function ConfirmationPanel({
   const busy = phase === 'confirming';
 
   return (
-    <section className="rounded-2xl bg-white p-5 text-slate-900 shadow-2xl ring-2 ring-slate-300">
+    <section className="app-card p-5 text-slate-900 shadow-[var(--shadow-raised)]">
       <div className="flex items-start gap-4">
         <ItemPhoto photoUrl={target.photoUrl} name={target.name} size={76} />
         <div className="min-w-0 flex-1">

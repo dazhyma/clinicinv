@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { withBasePath } from '@/base-path';
+import { ArrowLeftIcon, PrinterIcon } from '../../_components/icons';
+import { buttonClassName } from '../../_components/ui';
 import {
   LABEL_SIZES,
   MAX_LABEL_COPIES,
@@ -53,9 +55,9 @@ export function LabelPrintView({
 
   return (
     <>
-      <section className="no-print mx-auto flex w-full max-w-3xl flex-col gap-5 p-4 sm:p-6">
-        <Link href={backHref} className="text-base text-slate-600 underline underline-offset-4">
-          <span aria-hidden="true">←</span> {backLabel}
+      <section className="app-shell no-print flex max-w-4xl flex-col gap-5">
+        <Link href={backHref} className="inline-flex w-fit items-center gap-2 rounded-lg px-2 text-sm font-semibold text-slate-600 hover:bg-slate-100">
+          <ArrowLeftIcon size={18} /> {backLabel}
         </Link>
 
         <div>
@@ -130,28 +132,28 @@ export function LabelPrintView({
           <button
             type="button"
             onClick={() => window.print()}
-            className="rounded-xl bg-slate-900 px-8 py-4 text-lg font-semibold text-white"
+            className={buttonClassName({ variant: 'primary', size: 'large' })}
           >
-            Print
+            <PrinterIcon size={20} /> Print
           </button>
           {/* §5.6: скачивание опционально; PNG отдаётся со свободным полем сверху. */}
           <a
             href={`${downloadBase}?format=svg`}
             download={`${code}.svg`}
-            className="rounded-xl border border-slate-300 bg-white px-6 py-4 text-lg font-medium text-slate-800"
+            className={buttonClassName({ variant: 'secondary' })}
           >
             Download SVG
           </a>
           <a
             href={`${downloadBase}?format=png`}
             download={`${code}.png`}
-            className="rounded-xl border border-slate-300 bg-white px-6 py-4 text-lg font-medium text-slate-800"
+            className={buttonClassName({ variant: 'secondary' })}
           >
             Download PNG
           </a>
         </div>
 
-        <section className="mt-3 w-full rounded-2xl bg-white p-5 ring-1 ring-slate-200">
+        <section className="app-card mt-3 w-full p-5">
           <h2 className="text-xl font-semibold">Label Preview</h2>
           <div className="mt-5 flex min-h-64 items-center justify-center overflow-auto rounded-xl bg-slate-100 p-4 sm:p-8">
             <div

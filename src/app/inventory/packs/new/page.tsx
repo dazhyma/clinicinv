@@ -22,7 +22,7 @@ export default async function NewPackPage() {
   const { items } = listItemsForActor(getDb(), actor, {});
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col p-4 sm:p-6">
+    <main className="app-shell flex max-w-4xl flex-col">
       <AppHeader
         title="Add New Pack"
         subtitle="A pack adds all of its items with one scan."

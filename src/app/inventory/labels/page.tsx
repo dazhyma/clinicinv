@@ -15,7 +15,7 @@ export default async function PrintItemLabelsPage() {
   ].sort() as string[];
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-5xl flex-col p-4 sm:p-6">
+    <main className="app-shell flex max-w-6xl flex-col">
       <AppHeader
         title="Print Item Labels"
         subtitle="Select active items and create a US Letter label sheet."

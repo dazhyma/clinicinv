@@ -4,6 +4,7 @@ import { useActionState, useState } from 'react';
 import type { AccountOptionView } from '@/actions/accounts';
 import { MIN_PASSWORD_LENGTH } from '@/auth/password-rules';
 import { PasswordInput } from '../../_components/password-input';
+import { Alert } from '../../_components/ui';
 import { ErrorBanner, Field, SubmitButton, SuccessBanner } from '../../inventory/_components/form-field';
 import { changePasswordFormAction, type PasswordFormState } from './actions';
 
@@ -75,10 +76,8 @@ export function PasswordForm({
         )}
       </Field>
 
-      <div
-        role="status"
-        className="rounded-xl border-2 border-sky-300 bg-sky-50 px-4 py-3 text-sky-950"
-      >
+      <Alert tone="info">
+        <div>
         <p className="text-sm font-medium uppercase tracking-wide">Target account</p>
         <p className="mt-1 text-xl font-semibold">
           {selectedAccount?.username} · {selectedAccount?.role}
@@ -88,7 +87,8 @@ export function PasswordForm({
             The password for {untouchedAccount.username} will not be changed.
           </p>
         ) : null}
-      </div>
+        </div>
+      </Alert>
 
       {/* Подтверждение личности: без него чужая незалоченная сессия Admin
           позволяла бы сменить пароли обоих аккаунтов клиники. */}

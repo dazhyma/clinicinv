@@ -342,7 +342,7 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
       ) : null}
 
       {/* --- Уже посчитанное --- */}
-      <section className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+      <section className="app-card p-4">
         <h2 className="mb-3 text-xl font-semibold">
           Counted items ({state.countedItems}) · differences ({state.differenceCount})
         </h2>
@@ -408,12 +408,12 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
       </button>
 
       {confirmOpen ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 p-4">
+        <div className="modal-backdrop fixed inset-0 z-40 flex items-center justify-center bg-slate-900/60 p-4">
           <div
             role="dialog"
             aria-modal="true"
             aria-label="Finish this inventory count?"
-            className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl"
+            className="modal-panel app-card w-full max-w-lg p-6 shadow-[var(--shadow-raised)]"
           >
             <h2 className="text-2xl font-semibold">Finish this inventory count?</h2>
             <p className="mt-3 text-lg text-slate-700">

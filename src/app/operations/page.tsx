@@ -3,6 +3,8 @@ import { listOperationsForActor, type OperationRowView } from '@/actions/operati
 import { requirePage } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import { AppHeader } from '../_components/app-header';
+import { AutoDismissAlert } from '../_components/auto-dismiss-alert';
+import { Alert, EmptyState, StatusBadge } from '../_components/ui';
 import { formatDateTime } from './_components/format';
 import { VoidOperationButton } from './_components/void-dialog';
 import { startOperationFormAction } from './actions';
@@ -41,7 +43,7 @@ export default async function OperationsPage({
   const result = listOperationsForActor(getDb(), actor, query);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-4xl flex-col p-4 sm:p-6">
+    <main className="app-shell flex max-w-6xl flex-col">
       <AppHeader
         title="Operations"
         backHref="/"
@@ -50,22 +52,20 @@ export default async function OperationsPage({
       />
 
       {params.finished ? (
-        <p role="status" className="mb-4 rounded-xl bg-emerald-50 px-4 py-3 text-lg text-emerald-900">
+        <AutoDismissAlert>
           Operation {params.finished} is finished. Quantities and costs are locked.
-        </p>
+        </AutoDismissAlert>
       ) : null}
       {params.voided ? (
-        <p role="status" className="mb-4 rounded-xl bg-amber-50 px-4 py-3 text-lg text-amber-900">
+        <AutoDismissAlert tone="info">
           Operation {params.voided} was voided. All inventory deducted by it was returned.
-        </p>
+        </AutoDismissAlert>
       ) : null}
       {params.error ? (
-        <p role="alert" className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-lg text-red-800">
-          {params.error}
-        </p>
+        <Alert tone="danger" className="mb-5">{params.error}</Alert>
       ) : null}
 
-      <section className="mb-6 rounded-2xl border-2 border-emerald-500 bg-emerald-50/40 p-4">
+      <section className="app-card mb-6 border-emerald-200 bg-emerald-50/60 p-4 sm:p-5">
         <h2 className="mb-4 text-2xl font-bold">Current Operations</h2>
 
         {/* --- §8.3: блок возобновления --- */}
@@ -113,14 +113,14 @@ export default async function OperationsPage({
         <form action={startOperationFormAction}>
           <button
             type="submit"
-            className="w-full rounded-2xl bg-slate-900 px-6 py-5 text-2xl font-bold text-white sm:w-auto sm:px-10"
+            className="ui-button ui-button-primary min-h-13 w-full px-7 text-xl sm:w-auto sm:px-9"
           >
             {result.active.length > 0 ? 'Start Another Operation' : 'Start New Operation'}
           </button>
         </form>
       </section>
 
-      <section className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+      <section className="app-card bg-[var(--color-surface-muted)]/50 p-4 sm:p-5">
         <h2 className="mb-4 text-2xl font-bold">Past Operations</h2>
 
         {/* --- §7.2: поиск и фильтры только для истории --- */}
@@ -215,7 +215,7 @@ function OperationHistory({
       </div>
 
       {operations.length === 0 ? (
-        <p className="text-lg text-slate-600">{emptyLabel}</p>
+        <EmptyState title={emptyLabel} description="Try changing the search or status filter." />
       ) : (
         <ul className="flex flex-col gap-2">
           {operations.map((operation) => (
@@ -245,15 +245,9 @@ function OperationHistory({
                 </p>
               </div>
 
-              <span
-                className={`rounded-full px-4 py-2 text-base font-semibold ${
-                  operation.status === 'Finished'
-                    ? 'bg-slate-200 text-slate-800'
-                    : 'bg-red-100 text-red-900'
-                }`}
-              >
+              <StatusBadge tone={operation.status === 'Finished' ? 'success' : 'danger'}>
                 {operation.status}
-              </span>
+              </StatusBadge>
 
               <Link
                 href={`/operations/${operation.id}`}

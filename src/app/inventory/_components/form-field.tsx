@@ -1,6 +1,8 @@
 'use client';
 
 import { useFormStatus } from 'react-dom';
+import { AutoDismissAlert } from '../../_components/auto-dismiss-alert';
+import { Alert, buttonClassName } from '../../_components/ui';
 
 /**
  * Поле формы с явной связью label ↔ input и ошибкой, привязанной к полю.
@@ -37,7 +39,7 @@ export function Field({
 
   return (
     <div className="flex flex-col gap-1">
-      <label htmlFor={name} className="text-base font-medium">
+      <label htmlFor={name} className="ui-label text-base">
         {label}
         {required ? (
           <span className="ml-1 text-red-600" aria-hidden="true">
@@ -54,7 +56,7 @@ export function Field({
         'aria-invalid': error ? true : undefined,
         'aria-describedby': describedBy || undefined,
         required: required || undefined,
-        className: `w-full rounded-lg border px-3 py-3 text-lg ${
+        className: `ui-field text-lg ${
           error ? 'border-red-500 bg-red-50' : 'border-slate-300'
         }`,
       })}
@@ -77,21 +79,14 @@ export function Field({
 export function ErrorBanner({ message }: { message?: string }) {
   if (!message) return null;
   return (
-    <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-lg text-red-800 ring-1 ring-red-200">
-      {message}
-    </p>
+    <Alert tone="danger">{message}</Alert>
   );
 }
 
 export function SuccessBanner({ message }: { message?: string }) {
   if (!message) return null;
   return (
-    <p
-      role="status"
-      className="rounded-lg bg-emerald-50 px-4 py-3 text-lg text-emerald-900 ring-1 ring-emerald-200"
-    >
-      {message}
-    </p>
+    <AutoDismissAlert>{message}</AutoDismissAlert>
   );
 }
 
@@ -110,12 +105,12 @@ export function SubmitButton({
   variant?: 'primary' | 'danger';
 }) {
   const { pending } = useFormStatus();
-  const base =
-    'w-full rounded-xl px-5 py-4 text-lg font-semibold text-white disabled:opacity-60 sm:w-auto';
-  const color = variant === 'danger' ? 'bg-red-700' : 'bg-slate-900';
-
   return (
-    <button type="submit" disabled={pending} className={`${base} ${color}`}>
+    <button
+      type="submit"
+      disabled={pending}
+      className={buttonClassName({ variant, size: 'large', className: 'w-full sm:w-auto' })}
+    >
       {pending ? pendingLabel : children}
     </button>
   );

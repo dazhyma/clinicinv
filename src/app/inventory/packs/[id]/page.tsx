@@ -19,7 +19,7 @@ export default async function PackDetailPage({ params }: { params: Promise<{ id:
   const isAdmin = account.role === 'Admin';
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-4xl flex-col p-4 sm:p-6">
+    <main className="app-shell flex max-w-5xl flex-col">
       <AppHeader
         title={pack.name}
         subtitle="Pack Details"

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type InputHTMLAttributes } from 'react';
+import { EyeIcon, EyeOffIcon } from './icons';
 
 type PasswordInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & {
   /** Показывать длину без раскрытия самого пароля. */
@@ -58,11 +59,12 @@ export function PasswordInput({
         <button
           type="button"
           aria-label={visible ? 'Hide password' : 'Show password'}
+          title={visible ? 'Hide password' : 'Show password'}
           aria-pressed={visible}
           onClick={() => setVisible((current) => !current)}
-          className="absolute inset-y-0 right-0 flex min-h-11 min-w-12 items-center justify-center rounded-r-lg text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-slate-900"
+          className="absolute inset-y-0 right-0 flex min-h-11 min-w-12 items-center justify-center rounded-r-lg text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--color-focus)]"
         >
-          {visible ? <EyeOffIcon /> : <EyeIcon />}
+          {visible ? <EyeOffIcon size={22} /> : <EyeIcon size={22} />}
         </button>
       </div>
 
@@ -72,38 +74,5 @@ export function PasswordInput({
         </span>
       ) : null}
     </div>
-  );
-}
-
-function EyeIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      className="h-6 w-6"
-    >
-      <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
-      <circle cx="12" cy="12" r="2.75" />
-    </svg>
-  );
-}
-
-function EyeOffIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      className="h-6 w-6"
-    >
-      <path d="m3 3 18 18" />
-      <path d="M10.6 6.15A10.8 10.8 0 0 1 12 6c6 0 9.5 6 9.5 6a15.8 15.8 0 0 1-2.1 2.75M6.2 6.2C3.8 8 2.5 12 2.5 12s3.5 6 9.5 6a9.8 9.8 0 0 0 3.1-.5" />
-      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
-    </svg>
   );
 }

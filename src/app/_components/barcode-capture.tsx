@@ -8,12 +8,20 @@ import {
   useRef,
   useState,
 } from 'react';
-import type { BarcodeConfirmationView } from '@/actions/scanning';
-import { resolveBarcodeServerAction } from '../_actions/scanning';
+import { createPortal } from 'react-dom';
+import type {
+  BarcodeConfirmationView,
+  SelectionSearchResultView,
+} from '@/actions/scanning';
+import {
+  resolveBarcodeServerAction,
+  searchSelectionTargetsServerAction,
+} from '../_actions/scanning';
 import { newClientEventId } from './client-event-id';
+import { CameraIcon, CloseIcon, RefreshIcon, SearchIcon } from './icons';
 import { ItemPhoto } from './item-photo';
 
-export type BarcodeScanSource = 'camera' | 'hid';
+export type BarcodeScanSource = 'camera' | 'hid' | 'manual';
 
 export interface BarcodeConfirmOutcome {
   ok: boolean;
@@ -61,7 +69,7 @@ export const BarcodeCapture = forwardRef<BarcodeCaptureHandle, BarcodeCapturePro
     {
       id,
       label = 'Barcode',
-      placeholder = 'Ready to scan',
+      placeholder = 'Search or scan by item name, Item Code, or reference…',
       confirmLabel,
       allowPacks = true,
       autoOpenCamera = false,
@@ -78,10 +86,22 @@ export const BarcodeCapture = forwardRef<BarcodeCaptureHandle, BarcodeCapturePro
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
     const [showAllContents, setShowAllContents] = useState(false);
+    const [query, setQuery] = useState('');
+    const [results, setResults] = useState<SelectionSearchResultView[]>([]);
+    const [searching, setSearching] = useState(false);
+    const [searchError, setSearchError] = useState<string | null>(null);
+    const [cameraFacing, setCameraFacing] = useState<'environment' | 'user'>('environment');
+    const [canSwitchCamera, setCanSwitchCamera] = useState(false);
+    const [torchAvailable, setTorchAvailable] = useState(false);
+    const [torchOn, setTorchOn] = useState(false);
 
     const inputRef = useRef<HTMLInputElement>(null);
+    const cameraButtonRef = useRef<HTMLButtonElement>(null);
+    const overlayRef = useRef<HTMLDivElement>(null);
+    const closeButtonRef = useRef<HTMLButtonElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const streamRef = useRef<MediaStream | null>(null);
     const pausedRef = useRef(false);
     const resolvingRef = useRef(false);
     const confirmationIdRef = useRef<string | null>(null);
@@ -106,11 +126,19 @@ export const BarcodeCapture = forwardRef<BarcodeCaptureHandle, BarcodeCapturePro
       focusInput();
     }, [focusInput]);
 
+    const clearSearch = useCallback(() => {
+      setQuery('');
+      setResults([]);
+      setSearchError(null);
+      setSearching(false);
+    }, []);
+
     const closeCamera = useCallback(() => {
       setCameraOpen(false);
       setCameraReady(false);
+      setTorchOn(false);
       reset();
-      window.setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 100);
+      window.setTimeout(() => cameraButtonRef.current?.focus({ preventScroll: true }), 100);
     }, [reset]);
 
     const openCamera = useCallback(() => {
@@ -138,6 +166,46 @@ export const BarcodeCapture = forwardRef<BarcodeCaptureHandle, BarcodeCapturePro
       autoOpenedRef.current = true;
       openCamera();
     }, [autoOpenCamera, openCamera]);
+
+    useEffect(() => {
+      if (cameraOpen || phase !== 'idle') return;
+      const term = query.trim();
+      if (!term) {
+        setResults([]);
+        setSearchError(null);
+        setSearching(false);
+        return;
+      }
+      let cancelled = false;
+      setSearching(true);
+      const timer = window.setTimeout(async () => {
+        try {
+          const result = await searchSelectionTargetsServerAction({
+            query: term,
+            includePacks: allowPacks,
+          });
+          if (cancelled) return;
+          if (result.ok) {
+            setResults(result.data);
+            setSearchError(null);
+          } else {
+            setResults([]);
+            setSearchError(result.error);
+          }
+        } catch {
+          if (!cancelled) {
+            setResults([]);
+            setSearchError('Search is not available — check the connection');
+          }
+        } finally {
+          if (!cancelled) setSearching(false);
+        }
+      }, 180);
+      return () => {
+        cancelled = true;
+        window.clearTimeout(timer);
+      };
+    }, [allowPacks, cameraOpen, phase, query]);
 
     const resolveCode = useCallback(
       async (rawBarcode: string, scanSource: BarcodeScanSource) => {
@@ -181,15 +249,64 @@ export const BarcodeCapture = forwardRef<BarcodeCaptureHandle, BarcodeCapturePro
       void resolveCode(barcode, scanSource);
     };
 
-    // Keep body and page behind the full-screen camera stationary on iOS.
+    // Настоящий scroll lock для iOS: overflow:hidden в Safari недостаточен.
     useEffect(() => {
       if (!cameraOpen) return;
-      const previous = document.body.style.overflow;
+      const scrollY = window.scrollY;
+      const body = document.body;
+      const appRoot = document.getElementById('app-root');
+      const previous = {
+        overflow: body.style.overflow,
+        position: body.style.position,
+        top: body.style.top,
+        width: body.style.width,
+      };
+      body.style.position = 'fixed';
+      body.style.top = `-${scrollY}px`;
+      body.style.width = '100%';
       document.body.style.overflow = 'hidden';
+      appRoot?.setAttribute('inert', '');
+      appRoot?.setAttribute('aria-hidden', 'true');
+      window.setTimeout(() => closeButtonRef.current?.focus(), 0);
       return () => {
-        document.body.style.overflow = previous;
+        body.style.overflow = previous.overflow;
+        body.style.position = previous.position;
+        body.style.top = previous.top;
+        body.style.width = previous.width;
+        appRoot?.removeAttribute('inert');
+        appRoot?.removeAttribute('aria-hidden');
+        window.scrollTo(0, scrollY);
       };
     }, [cameraOpen]);
+
+    useEffect(() => {
+      if (!cameraOpen) return;
+      const trapFocus = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeCamera();
+          return;
+        }
+        if (event.key !== 'Tab' || !overlayRef.current) return;
+        const focusable = Array.from(
+          overlayRef.current.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          ),
+        );
+        if (!focusable.length) return;
+        const first = focusable[0]!;
+        const last = focusable[focusable.length - 1]!;
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      };
+      document.addEventListener('keydown', trapFocus);
+      return () => document.removeEventListener('keydown', trapFocus);
+    }, [cameraOpen, closeCamera]);
 
     // Camera setup and a central-region ZXing decode loop. getUserMedia with
     // facingMode=environment works in current Safari iOS/iPadOS and Chrome
@@ -198,13 +315,13 @@ export const BarcodeCapture = forwardRef<BarcodeCaptureHandle, BarcodeCapturePro
       if (!cameraOpen) return;
 
       let stopped = false;
-      let stream: MediaStream | null = null;
       let timer: number | null = null;
 
       const stop = () => {
         stopped = true;
         if (timer != null) window.clearTimeout(timer);
-        stream?.getTracks().forEach((track) => track.stop());
+        streamRef.current?.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
         if (videoRef.current) videoRef.current.srcObject = null;
       };
 
@@ -217,10 +334,10 @@ export const BarcodeCapture = forwardRef<BarcodeCaptureHandle, BarcodeCapturePro
         }
 
         try {
-          stream = await navigator.mediaDevices.getUserMedia({
+          const stream = await navigator.mediaDevices.getUserMedia({
             audio: false,
             video: {
-              facingMode: { ideal: 'environment' },
+              facingMode: { ideal: cameraFacing },
               width: { ideal: 1920 },
               height: { ideal: 1080 },
             },
@@ -229,11 +346,20 @@ export const BarcodeCapture = forwardRef<BarcodeCaptureHandle, BarcodeCapturePro
             stream.getTracks().forEach((track) => track.stop());
             return;
           }
+          streamRef.current = stream;
 
           const video = videoRef.current;
           if (!video) return;
           video.srcObject = stream;
           await video.play();
+
+          const track = stream.getVideoTracks()[0];
+          const capabilities = track?.getCapabilities?.() as MediaTrackCapabilities & {
+            torch?: boolean;
+          };
+          setTorchAvailable(Boolean(capabilities?.torch));
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          setCanSwitchCamera(devices.filter((device) => device.kind === 'videoinput').length > 1);
 
           const [{ BrowserMultiFormatOneDReader }, { BarcodeFormat, DecodeHintType }] =
             await Promise.all([import('@zxing/browser'), import('@zxing/library')]);
@@ -313,7 +439,19 @@ export const BarcodeCapture = forwardRef<BarcodeCaptureHandle, BarcodeCapturePro
 
       void start();
       return stop;
-    }, [cameraOpen]);
+    }, [cameraFacing, cameraOpen]);
+
+    const toggleTorch = useCallback(async () => {
+      const track = streamRef.current?.getVideoTracks()[0];
+      if (!track) return;
+      const next = !torchOn;
+      try {
+        await track.applyConstraints({ advanced: [{ torch: next } as MediaTrackConstraintSet] });
+        setTorchOn(next);
+      } catch {
+        setTorchAvailable(false);
+      }
+    }, [torchOn]);
 
     async function confirm() {
       if (!target || !source || phase === 'confirming') return;
@@ -341,6 +479,7 @@ export const BarcodeCapture = forwardRef<BarcodeCaptureHandle, BarcodeCapturePro
 
         setSuccess(outcome.message ?? `${target.name} confirmed`);
         setPhase('success');
+        clearSearch();
         window.setTimeout(reset, 700);
       } catch {
         setError('The item was not saved — check the connection and try again');
@@ -349,6 +488,10 @@ export const BarcodeCapture = forwardRef<BarcodeCaptureHandle, BarcodeCapturePro
     }
 
     const scanAgain = () => {
+      if (source === 'manual') {
+        reset();
+        return;
+      }
       if (cameraOpen && !cameraReady) {
         setCameraOpen(false);
         reset();
@@ -375,73 +518,19 @@ export const BarcodeCapture = forwardRef<BarcodeCaptureHandle, BarcodeCapturePro
           onConfirm={() => void confirm()}
           onScanAgain={scanAgain}
           onCancel={cancel}
+          retryLabel={source === 'manual' ? 'Back to Search' : 'Scan Again'}
         />
       );
 
-    return (
-      <>
-        <div className="app-card p-4">
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              const input = inputRef.current;
-              if (!input) return;
-              const value = input.value;
-              input.value = '';
-              void resolveCode(value, 'hid');
-            }}
-          >
-            <label htmlFor={id} className="text-base font-medium text-slate-700">
-              {label}
-            </label>
-            <div className="mt-1 flex flex-col gap-3 sm:flex-row">
-              <input
-                id={id}
-                ref={inputRef}
-                type="text"
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="characters"
-                spellCheck={false}
-                inputMode="none"
-                disabled={disabled || phase !== 'idle'}
-                placeholder={placeholder}
-                className="min-w-0 flex-1 rounded-xl border-2 border-slate-400 px-4 py-4 font-mono text-2xl disabled:bg-slate-100"
-              />
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={openCamera}
-                className="min-h-14 rounded-xl bg-slate-900 px-6 py-3 text-lg font-semibold text-white disabled:opacity-50"
-              >
-                Scan with Camera
-              </button>
-            </div>
-            <p className="mt-2 text-base text-slate-600">
-              Use the camera or scan with the USB/Bluetooth scanner. Nothing is added until you
-              confirm.
-            </p>
-          </form>
-
-          {source === 'hid' ? <div className="mt-4">{panel}</div> : null}
-        </div>
-
-        {cameraOpen ? (
+    const cameraOverlay = cameraOpen
+      ? createPortal(
           <div
+            ref={overlayRef}
             role="dialog"
             aria-modal="true"
             aria-label="Camera barcode scanner"
-            className="camera-surface fixed inset-x-0 top-0 z-50 flex h-[100dvh] flex-col overflow-hidden bg-black"
+            className="camera-overlay fixed inset-0 z-[9999] flex h-screen min-h-0 w-screen flex-col overflow-hidden bg-black"
           >
-            {/*
-             * Высота задана в dvh, а не через inset-0.
-             *
-             * На мобильных `position: fixed; inset: 0` растягивается по БОЛЬШОМУ
-             * вьюпорту, то есть заходит под сворачиваемую панель браузера с
-             * адресом. Из-за этого прижатые к низу кнопки оказывались за панелью
-             * Safari, и нажать подтверждение было невозможно. `100dvh` считается
-             * по видимой области и меняется вместе с панелью браузера.
-             */}
             <video
               ref={videoRef}
               autoPlay
@@ -451,7 +540,7 @@ export const BarcodeCapture = forwardRef<BarcodeCaptureHandle, BarcodeCapturePro
             />
             <canvas ref={canvasRef} className="hidden" aria-hidden="true" />
 
-            <div className="relative z-20 flex items-center justify-between gap-3 bg-black/72 p-4 text-white backdrop-blur-[2px]">
+            <div className="camera-safe-top relative z-20 flex items-center justify-between gap-3 bg-black/75 px-4 pb-4 text-white backdrop-blur-[2px]">
               <div>
                 <p className="text-xl font-bold">Place one barcode inside the frame</p>
                 <p className="text-sm text-white/80">
@@ -459,29 +548,154 @@ export const BarcodeCapture = forwardRef<BarcodeCaptureHandle, BarcodeCapturePro
                 </p>
               </div>
               <button
+                ref={closeButtonRef}
                 type="button"
                 onClick={closeCamera}
-                className="min-h-12 rounded-xl bg-black/60 px-5 text-lg font-semibold ring-1 ring-white/50"
+                className="flex min-h-12 items-center gap-2 rounded-xl bg-black/60 px-4 text-lg font-semibold ring-1 ring-white/50"
               >
-                Cancel
+                <CloseIcon /> Close
               </button>
             </div>
 
-            {/*
-             * Рамка прицела в потоке, а не absolute: панель подтверждения встаёт
-             * сразу под ней, а не у нижнего края экрана, где её накрывает браузер.
-             */}
-            <div className="pointer-events-none relative z-10 flex shrink-0 justify-center px-5">
-              <div className="h-[30dvh] max-h-72 min-h-36 w-full max-w-2xl rounded-3xl border-4 border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.42)]" />
+            <div className="pointer-events-none relative z-10 flex min-h-0 flex-1 items-center justify-center px-5 py-4">
+              <div className="h-[clamp(9rem,28dvh,18rem)] w-full max-w-2xl rounded-3xl border-4 border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.42)]" />
             </div>
 
+            {torchAvailable || canSwitchCamera ? (
+              <div className="relative z-20 flex justify-center gap-3 px-4 pb-3 text-white">
+                {torchAvailable ? (
+                  <button
+                    type="button"
+                    aria-pressed={torchOn}
+                    onClick={() => void toggleTorch()}
+                    className="min-h-12 rounded-full bg-black/70 px-5 font-semibold ring-1 ring-white/50"
+                  >
+                    {torchOn ? 'Turn Flash Off' : 'Turn Flash On'}
+                  </button>
+                ) : null}
+                {canSwitchCamera ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCameraReady(false);
+                      setTorchOn(false);
+                      setCameraFacing((value) => (value === 'environment' ? 'user' : 'environment'));
+                    }}
+                    className="flex min-h-12 items-center gap-2 rounded-full bg-black/70 px-5 font-semibold ring-1 ring-white/50"
+                  >
+                    <RefreshIcon /> Switch Camera
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
             {phase !== 'idle' ? (
-              <div className="relative z-20 mt-3 flex-1 overflow-y-auto px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-5">
+              <div className="camera-safe-bottom relative z-30 max-h-[65dvh] shrink-0 overflow-y-auto px-3 pt-3 sm:mx-auto sm:w-full sm:max-w-2xl sm:px-5">
                 {panel}
               </div>
             ) : null}
-          </div>
-        ) : null}
+          </div>,
+          document.body,
+        )
+      : null;
+
+    return (
+      <>
+        <div className="app-card p-4">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              const value = query.trim();
+              if (/^(ITM|PCK)-\d{6}$/i.test(value)) {
+                setQuery('');
+                setResults([]);
+                void resolveCode(value, 'hid');
+              }
+            }}
+          >
+            <label htmlFor={id} className="text-base font-medium text-slate-700">
+              {label}
+            </label>
+            <div className="mt-1 flex flex-col gap-3 sm:flex-row">
+              <div className="relative min-w-0 flex-1">
+                <SearchIcon className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={24} />
+                <input
+                  id={id}
+                  ref={inputRef}
+                  type="search"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Tab' || !/^(ITM|PCK)-\d{6}$/i.test(query.trim())) return;
+                    event.preventDefault();
+                    const code = query.trim();
+                    setQuery('');
+                    setResults([]);
+                    void resolveCode(code, 'hid');
+                  }}
+                  disabled={disabled || phase !== 'idle'}
+                  placeholder={placeholder}
+                  className="min-h-14 w-full rounded-xl border-2 border-slate-400 py-4 pl-12 pr-4 text-xl disabled:bg-slate-100"
+                />
+              </div>
+              <button
+                ref={cameraButtonRef}
+                type="button"
+                disabled={disabled}
+                onClick={openCamera}
+                className="ui-button ui-button-primary flex min-h-14 items-center justify-center gap-2 px-6 py-3 text-lg"
+              >
+                <CameraIcon size={24} /> Scan with Camera
+              </button>
+            </div>
+            <p className="mt-2 text-base text-slate-600">
+              Type to search, use a USB/Bluetooth scanner, or scan with the camera. Nothing is
+              added until you confirm.
+            </p>
+          </form>
+
+          {!cameraOpen && phase === 'idle' && query.trim() ? (
+            <div className="mt-4 border-t border-slate-200 pt-4" aria-live="polite">
+              {searchError ? <p role="alert" className="text-red-800">{searchError}</p> : null}
+              {searching ? <p className="text-slate-600">Searching…</p> : null}
+              {!searching && !searchError && results.length === 0 ? (
+                <p className="text-slate-600">No matching items{allowPacks ? ' or packs' : ''}.</p>
+              ) : null}
+              {results.length ? (
+                <ul className="flex max-h-96 flex-col gap-2 overflow-y-auto">
+                  {results.map((result) => (
+                    <li key={`${result.kind}-${result.id}`}>
+                      <button
+                        type="button"
+                        onClick={() => void resolveCode(result.internalCode, 'manual')}
+                        className="flex min-h-16 w-full items-center gap-3 rounded-xl border border-slate-300 p-3 text-left transition hover:border-slate-500 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--color-focus-ring)]"
+                      >
+                        <ItemPhoto photoUrl={result.photoUrl} name={result.name} size={48} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-lg font-semibold">{result.name}</span>
+                          <span className="block font-mono text-sm text-slate-600">
+                            {result.internalCode}
+                            {result.referenceNumber ? ` · Ref ${result.referenceNumber}` : ''}
+                          </span>
+                        </span>
+                        {result.kind === 'pack' ? <span className="status-badge">Pack</span> : null}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+
+          {!cameraOpen && source !== 'camera' && phase !== 'idle' ? (
+            <div className="mt-4">{panel}</div>
+          ) : null}
+        </div>
+        {cameraOverlay}
       </>
     );
   },
@@ -498,6 +712,7 @@ function ConfirmationPanel({
   onConfirm,
   onScanAgain,
   onCancel,
+  retryLabel,
 }: {
   phase: Phase;
   target: BarcodeConfirmationView | null;
@@ -509,6 +724,7 @@ function ConfirmationPanel({
   onConfirm(): void;
   onScanAgain(): void;
   onCancel(): void;
+  retryLabel: string;
 }) {
   if (phase === 'resolving') {
     return (
@@ -544,7 +760,7 @@ function ConfirmationPanel({
             onClick={onScanAgain}
             className="min-h-14 rounded-xl bg-slate-900 px-4 text-lg font-semibold text-white"
           >
-            Scan Again
+            {retryLabel}
           </button>
           <button
             type="button"
@@ -628,7 +844,7 @@ function ConfirmationPanel({
           onClick={onScanAgain}
           className="min-h-14 rounded-xl border-2 border-slate-400 px-4 text-lg font-semibold disabled:opacity-50"
         >
-          Scan Again
+          {retryLabel}
         </button>
         <button
           type="button"

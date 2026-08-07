@@ -3,11 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import type {
-  ItemSearchResultView,
-  OperationMutationResult,
-  OperationStateView,
-} from '@/actions/operations';
+import type { OperationMutationResult, OperationStateView } from '@/actions/operations';
 import type { ActionResult } from '@/actions/result';
 import type { BarcodeConfirmationView } from '@/actions/scanning';
 import { newClientEventId } from '../../_components/client-event-id';
@@ -15,15 +11,14 @@ import {
   BarcodeCapture,
   type BarcodeCaptureHandle,
   type BarcodeConfirmOutcome,
+  type BarcodeScanSource,
 } from '../../_components/barcode-capture';
 import {
-  addItemAction,
   changeLineQuantityServerAction,
   finishOperationServerAction,
   scanBarcodeAction,
   undoLastScanServerAction,
 } from '../actions';
-import { ManualSearchDialog } from './manual-search';
 import { playScanSound } from './scan-sound';
 import { VoidOperationButton } from './void-dialog';
 
@@ -119,7 +114,6 @@ export function OperationScreen({
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [offline, setOffline] = useState(false);
   const [unsynced, setUnsynced] = useState(0);
-  const [manualOpen, setManualOpen] = useState(false);
   const [finishOpen, setFinishOpen] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
@@ -327,7 +321,7 @@ export function OperationScreen({
   const confirmScannedTarget = useCallback(
     async (
       known: BarcodeConfirmationView,
-      _source: 'camera' | 'hid',
+      _source: BarcodeScanSource,
       clientEventId: string,
     ): Promise<BarcodeConfirmOutcome> => {
       const optimisticLines: OptimisticLine[] =
@@ -371,44 +365,6 @@ export function OperationScreen({
       return result.ok
         ? { ok: true, message: result.data.message, next: 'resume' }
         : { ok: false, error: result.error };
-    },
-    [runMutation, showFeedback, state.id],
-  );
-
-  // --- Ручное добавление (§7.8) ---------------------------------------------
-
-  const handleManualPick = useCallback(
-    (item: ItemSearchResultView) => {
-      const clientEventId = newClientEventId();
-      dialogOpenRef.current = false;
-      setManualOpen(false);
-
-      showFeedback({ tone: 'pending', title: `${item.name} — saving…`, warnings: [] });
-
-      void runMutation({
-        entry: {
-          clientEventId,
-          label: item.name,
-          lines: [
-            {
-              key: `${clientEventId}:${item.itemId}`,
-              itemId: item.itemId,
-              name: item.name,
-              unitOfMeasurement: item.unitOfMeasurement,
-              quantity: 1,
-              packName: null,
-            },
-          ],
-        },
-        rollbackLabel: item.name,
-        call: () =>
-          addItemAction({
-            operationId: state.id,
-            itemId: item.itemId,
-            quantity: 1,
-            clientEventId,
-          }),
-      });
     },
     [runMutation, showFeedback, state.id],
   );
@@ -628,6 +584,7 @@ export function OperationScreen({
       <BarcodeCapture
         ref={scannerRef}
         id="operation-scan-input"
+        label="Search or scan an item or pack"
         confirmLabel="Add"
         onConfirm={confirmScannedTarget}
       />
@@ -640,13 +597,6 @@ export function OperationScreen({
           className="flex-1 rounded-xl border-2 border-slate-900 px-6 py-4 text-lg font-semibold"
         >
           Undo Last Scan
-        </button>
-        <button
-          type="button"
-          onClick={() => openDialog(() => setManualOpen(true))}
-          className="flex-1 rounded-xl border-2 border-slate-900 px-6 py-4 text-lg font-semibold"
-        >
-          Manual Item Search
         </button>
       </div>
 
@@ -754,12 +704,6 @@ export function OperationScreen({
           All operations
         </Link>
       </p>
-
-      <ManualSearchDialog
-        open={manualOpen}
-        onClose={() => closeDialog(() => setManualOpen(false))}
-        onPick={handleManualPick}
-      />
 
       {/*
         §9.2: ровно одно подтверждение, текст дословно из ТЗ.

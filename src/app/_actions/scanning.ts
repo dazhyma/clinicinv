@@ -3,6 +3,8 @@
 import {
   resolveBarcodeForConfirmation,
   type BarcodeConfirmationView,
+  searchSelectionTargetsForConfirmation,
+  type SelectionSearchResultView,
 } from '@/actions/scanning';
 import { toFailure, type ActionResult } from '@/actions/result';
 import { requireActor } from '@/auth/guards';
@@ -20,6 +22,18 @@ export async function resolveBarcodeServerAction(
   try {
     const actor = await requireActor();
     return resolveBarcodeForConfirmation(getDb(), actor, barcode);
+  } catch (error) {
+    return toFailure(error);
+  }
+}
+
+export async function searchSelectionTargetsServerAction(input: {
+  query: string;
+  includePacks?: boolean;
+}): Promise<ActionResult<SelectionSearchResultView[]>> {
+  try {
+    const actor = await requireActor();
+    return searchSelectionTargetsForConfirmation(getDb(), actor, input);
   } catch (error) {
     return toFailure(error);
   }

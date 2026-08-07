@@ -9,7 +9,9 @@ import type { AppDatabase } from '@/db/client';
 import type { Actor } from '@/domain/actor';
 import { assertAuthenticated } from '@/domain/actor';
 import { errors } from '@/domain/errors';
+import { listItems } from '@/domain/items';
 import { resolveScannedBarcode } from '@/domain/operations';
+import { listPacks } from '@/domain/packs';
 import { runAction, type ActionResult } from './result';
 
 export interface BarcodeConfirmationComponentView {
@@ -31,6 +33,87 @@ export interface BarcodeConfirmationView {
   currentQuantity: number | null;
   unitOfMeasurement: string | null;
   components: BarcodeConfirmationComponentView[];
+}
+
+export interface SelectionSearchResultView {
+  kind: 'item' | 'pack';
+  id: number;
+  name: string;
+  internalCode: string;
+  photoUrl: string | null;
+  referenceNumber: string | null;
+  currentQuantity: number | null;
+  unitOfMeasurement: string | null;
+}
+
+function relevance(
+  row: Pick<SelectionSearchResultView, 'name' | 'internalCode' | 'referenceNumber'>,
+  rawQuery: string,
+): number {
+  const query = rawQuery.toLocaleLowerCase();
+  const name = row.name.toLocaleLowerCase();
+  const code = row.internalCode.toLocaleLowerCase();
+  const reference = row.referenceNumber?.toLocaleLowerCase() ?? '';
+  if (name === query || code === query || reference === query) return 0;
+  if (code.startsWith(query) || reference.startsWith(query)) return 1;
+  if (name.startsWith(query)) return 2;
+  return 3;
+}
+
+/**
+ * Общий read-only поиск для ручного ввода рядом со сканером. Пустой запрос
+ * намеренно ничего не возвращает; стоимость не входит в ответ сервера (D-18).
+ */
+export function searchSelectionTargetsForConfirmation(
+  db: AppDatabase,
+  actor: Actor,
+  input: { query: string; includePacks?: boolean },
+): ActionResult<SelectionSearchResultView[]> {
+  return runAction(() => {
+    assertAuthenticated(actor);
+    const query = input.query?.trim() ?? '';
+    if (!query) return [];
+    if (query.length > 120) {
+      throw errors.validationFailed('Search must be 120 characters or fewer');
+    }
+    const results: SelectionSearchResultView[] = listItems(db, {
+      query,
+      includeInactive: false,
+      limit: 50,
+    }).map((item) => ({
+      kind: 'item' as const,
+      id: item.id,
+      name: item.name,
+      internalCode: item.internalCode,
+      photoUrl: item.photoUrl,
+      referenceNumber: item.referenceNumber,
+      currentQuantity: item.currentQuantity,
+      unitOfMeasurement: item.unitOfMeasurement,
+    }));
+
+    if (input.includePacks) {
+      results.push(
+        ...listPacks(db, { query, includeInactive: false }).map((pack) => ({
+          kind: 'pack' as const,
+          id: pack.id,
+          name: pack.name,
+          internalCode: pack.internalCode,
+          photoUrl: pack.photoUrl,
+          referenceNumber: null,
+          currentQuantity: null,
+          unitOfMeasurement: null,
+        })),
+      );
+    }
+
+    return results
+      .sort(
+        (left, right) =>
+          relevance(left, query) - relevance(right, query) ||
+          left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }),
+      )
+      .slice(0, 25);
+  });
 }
 
 export function resolveBarcodeForConfirmation(

@@ -23,7 +23,7 @@ export function ReceiveStockScanner({ autoOpenCamera = false }: { autoOpenCamera
   return (
     <BarcodeCapture
       id="receive-scan"
-      label="Scan an item barcode"
+      label="Search or scan an item"
       confirmLabel="Confirm Item"
       allowPacks={false}
       autoOpenCamera={autoOpenCamera}

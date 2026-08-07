@@ -2,11 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type {
-  CountScanTargetView,
-  CountSearchResultView,
-  InventoryCountStateView,
-} from '@/actions/inventory-count';
+import type { CountScanTargetView, InventoryCountStateView } from '@/actions/inventory-count';
 import type { BarcodeConfirmationView } from '@/actions/scanning';
 import {
   BarcodeCapture,
@@ -19,9 +15,7 @@ import {
   cancelInventoryCountServerAction,
   recordCountLineServerAction,
   scanForCountServerAction,
-  selectItemForCountServerAction,
 } from '../count/actions';
-import { CountManualSearchDialog } from './count-manual-search';
 import { useUnsavedChanges } from '../../_components/use-unsaved-changes';
 import { ItemPhoto } from '../../_components/item-photo';
 
@@ -59,7 +53,6 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
   const [feedback, setFeedback] = useState<{ tone: Tone; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [manualSearchOpen, setManualSearchOpen] = useState(false);
 
   const scannerRef = useRef<BarcodeCaptureHandle>(null);
   const quantityRef = useRef<HTMLInputElement>(null);
@@ -111,29 +104,9 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
     }
   }
 
-  async function confirmManualItem(item: CountSearchResultView) {
-    setBusy(true);
-    try {
-      const result = await selectItemForCountServerAction({
-        countId: state.id,
-        itemId: item.itemId,
-      });
-      if (!result.ok) throw new Error(result.error);
-      setManualSearchOpen(false);
-      openQuantityEntry(result.data, false);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   function continueScanning() {
     if (returnToCameraRef.current) scannerRef.current?.openCamera();
     else scannerRef.current?.focusInput();
-  }
-
-  function closeManualSearch() {
-    setManualSearchOpen(false);
-    window.setTimeout(() => scannerRef.current?.focusInput(), 100);
   }
 
   // --- Шаги 3–5: фактическое количество, ожидаемое, разница ------------------
@@ -231,21 +204,12 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
       <BarcodeCapture
         ref={scannerRef}
         id="count-scan"
-        label="Item barcode"
+        label="Search or scan an item"
         confirmLabel="Confirm Item"
         allowPacks={false}
-        disabled={busy || Boolean(target) || manualSearchOpen}
+        disabled={busy || Boolean(target)}
         onConfirm={confirmScannedItem}
       />
-
-      <button
-        type="button"
-        disabled={busy || Boolean(target)}
-        onClick={() => setManualSearchOpen(true)}
-        className="rounded-xl border-2 border-slate-400 bg-white px-6 py-4 text-lg font-semibold disabled:opacity-50"
-      >
-        Find Item Manually
-      </button>
 
       {/* --- Шаги 3–5: найденное количество, ожидаемое, разница --- */}
       {target ? (
@@ -441,12 +405,6 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
         </div>
       ) : null}
 
-      <CountManualSearchDialog
-        open={manualSearchOpen}
-        countId={state.id}
-        onClose={closeManualSearch}
-        onPick={confirmManualItem}
-      />
     </div>
   );
 }

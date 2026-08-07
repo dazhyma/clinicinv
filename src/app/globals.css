@@ -19,12 +19,15 @@
   --color-text-secondary: #626b69;
   --color-text-disabled: #919895;
 
-  --color-primary: #657975;
-  --color-primary-hover: #566965;
-  --color-primary-active: #495b57;
+  --color-primary: #526a65;
+  --color-primary-hover: #455b56;
+  --color-primary-active: #394d49;
   --color-primary-soft: #d7e0dd;
-  --color-secondary: #a6b1af;
+  --color-secondary: #80918d;
   --color-secondary-hover: #929f9c;
+  --color-control-disabled: #c9d0cd;
+  --color-control-disabled-text: #7e8986;
+  --color-focus-ring: rgb(82 106 101 / 0.34);
 
   --color-border: #d2d0c9;
   --color-border-strong: #adb5b2;
@@ -172,9 +175,7 @@ h3 {
   letter-spacing: -0.025em;
 }
 
-/* Плавное появление без transform: смещение текста вызывало финальный рывок
- * после уничтожения GPU-слоя. Более мягкая кривая и blur дают ощущение движения
- * без изменения геометрии страницы. */
+/* Opacity не создаёт containing block для fixed-портала камеры. */
 main {
   animation: page-enter 320ms var(--ease-standard) both;
 }
@@ -214,7 +215,7 @@ a[role='button']:active {
 }
 
 :where(button, a, input, select, textarea):focus-visible {
-  outline: 3px solid rgb(101 121 117 / 0.34);
+  outline: 3px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
 
@@ -305,8 +306,12 @@ input[type='radio'] {
   box-shadow: 0 5px 15px rgb(73 91 87 / 0.2);
 }
 
+.ui-button-primary:active:not(:disabled) {
+  background: var(--color-primary-active);
+}
+
 .ui-button-secondary {
-  border-color: var(--color-border);
+  border-color: var(--color-secondary);
   background: var(--color-surface-raised);
   color: var(--color-text-primary);
 }
@@ -343,7 +348,23 @@ input[type='radio'] {
 
 .ui-button:disabled {
   cursor: not-allowed;
-  opacity: 0.52;
+  background: var(--color-control-disabled);
+  color: var(--color-control-disabled-text);
+  opacity: 1;
+}
+
+.camera-overlay {
+  height: 100vh;
+  height: 100dvh;
+  overscroll-behavior: none;
+}
+
+.camera-safe-top {
+  padding-top: max(1rem, env(safe-area-inset-top));
+}
+
+.camera-safe-bottom {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
 }
 
 .ui-field {
@@ -479,11 +500,9 @@ input[type='radio'] {
 @keyframes page-enter {
   from {
     opacity: 0;
-    filter: blur(1.5px);
   }
   to {
     opacity: 1;
-    filter: blur(0);
   }
 }
 

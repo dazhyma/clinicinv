@@ -9,7 +9,7 @@
  * существующие строки операций (§6.7, §18.17). Состав читается только в момент
  * сканирования.
  */
-import { and, eq, like, or, sql, type SQL } from 'drizzle-orm';
+import { and, eq, or, sql, type SQL } from 'drizzle-orm';
 import type { AppDatabase, DbLike } from '@/db/client';
 import {
   barcodeRegistry,
@@ -313,9 +313,9 @@ export function listPacks(
   if (term) {
     const pattern = `%${term.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
     const match = or(
-      like(packs.name, pattern),
-      like(packs.internalCode, pattern),
-      like(packs.barcodeValue, pattern),
+      sql`${packs.name} like ${pattern} escape '\\'`,
+      sql`${packs.internalCode} like ${pattern} escape '\\'`,
+      sql`${packs.barcodeValue} like ${pattern} escape '\\'`,
     );
     if (match) conditions.push(match);
   }

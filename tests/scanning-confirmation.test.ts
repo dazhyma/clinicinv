@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   resolveBarcodeForConfirmation,
+  searchSelectionTargetsForConfirmation,
   type BarcodeConfirmationView,
+  type SelectionSearchResultView,
 } from '@/actions/scanning';
 import { getOperationState, startOperationAction } from '@/actions/operations';
 import { getItem } from '@/domain/items';
@@ -82,5 +84,48 @@ describe('barcode confirmation lookup is read-only', () => {
     const ctx = setupTestDb();
     const unknown = resolveBarcodeForConfirmation(ctx.db, ctx.staff, 'NOT-A-BARCODE');
     expect(unknown).toMatchObject({ ok: false, code: 'BARCODE_NOT_FOUND' });
+  });
+});
+
+describe('unified scanner search is read-only and ranked', () => {
+  it('searches active items by name, code and reference without exposing cost', () => {
+    const ctx = setupTestDb();
+    const gauze = makeItem(ctx, FIXTURES.gauze, { referenceNumber: 'REF-127' });
+    makeItem(ctx, { ...FIXTURES.gloves, name: 'Gauze Wrapper' });
+    const movementsBefore = listMovementsForItem(ctx.db, gauze.id).length;
+
+    for (const query of ['Gauze 4x4', gauze.internalCode, 'REF-127']) {
+      const results = expectSuccess<SelectionSearchResultView[]>(
+        searchSelectionTargetsForConfirmation(ctx.db, ctx.staff, { query }),
+      );
+      expect(results[0]).toMatchObject({ id: gauze.id, kind: 'item' });
+      expect(results[0]).not.toHaveProperty('currentUnitCostCents');
+    }
+    expect(getItem(ctx.db, gauze.id)?.currentQuantity).toBe(10);
+    expect(listMovementsForItem(ctx.db, gauze.id)).toHaveLength(movementsBefore);
+  });
+
+  it('includes packs only when requested and treats LIKE characters literally', () => {
+    const ctx = setupTestDb();
+    const item = makeItem(ctx, { ...FIXTURES.gauze, name: 'Gauze 100%_Sterile' });
+    const pack = makeBasicPack(ctx, [{ itemId: item.id, quantity: 1 }], 'Sterile Pack');
+
+    const itemsOnly = expectSuccess<Array<{ kind: string }>>(
+      searchSelectionTargetsForConfirmation(ctx.db, ctx.staff, { query: 'Sterile' }),
+    );
+    expect(itemsOnly.every((row) => row.kind === 'item')).toBe(true);
+
+    const withPacks = expectSuccess<Array<{ kind: string; id: number }>>(
+      searchSelectionTargetsForConfirmation(ctx.db, ctx.staff, {
+        query: 'Sterile',
+        includePacks: true,
+      }),
+    );
+    expect(withPacks).toContainEqual(expect.objectContaining({ kind: 'pack', id: pack.id }));
+    expect(
+      expectSuccess<unknown[]>(
+        searchSelectionTargetsForConfirmation(ctx.db, ctx.staff, { query: '100%_' }),
+      ),
+    ).toHaveLength(1);
   });
 });

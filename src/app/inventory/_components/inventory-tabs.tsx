@@ -9,15 +9,15 @@ export function InventoryTabs({ active }: { active: 'items' | 'packs' }) {
   ] as const;
 
   return (
-    <nav aria-label="Inventory sections" className="mb-6 flex gap-2 rounded-xl bg-[var(--color-surface-muted)] p-1.5">
+    <nav aria-label="Inventory sections" className="mb-6 flex w-fit max-w-full gap-2">
       {tabs.map((tab) => (
         <Link
           key={tab.id}
           href={tab.href}
           aria-current={active === tab.id ? 'page' : undefined}
           className={buttonClassName({
-            variant: active === tab.id ? 'primary' : 'soft',
-            className: `flex-1 text-base sm:flex-none ${active === tab.id ? '' : 'bg-transparent'}`,
+            variant: active === tab.id ? 'primary' : 'secondary',
+            className: 'text-base',
           })}
         >
           {tab.label}

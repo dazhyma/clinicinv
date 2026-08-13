@@ -18,7 +18,7 @@
  * `random_case_code` — случайная строка, не производная от каких-либо данных
  * (§2.4, §7.3, §18.3, §18.4).
  */
-import { and, desc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import type { AppDatabase, DbLike, Tx } from '@/db/client';
 import {
   items,
@@ -35,7 +35,14 @@ import {
 } from '@/db/schema';
 import { assertAdmin, assertAuthenticated, type Actor } from './actor';
 import { AUDIT_ACTIONS, writeAudit } from './audit';
-import { findBarcodeOwner, generateCaseCode, normalizeScannedCode } from './codes';
+import {
+  findBarcodeOwner,
+  formatCaseCode,
+  generateCaseCode,
+  nextCaseNumber,
+  normalizeScannedCode,
+} from './codes';
+import { loadSelectableDoctor } from './doctors';
 import { errors } from './errors';
 import { formatCents, lineTotalCents } from './money';
 import {
@@ -78,11 +85,69 @@ export function getOperation(tx: DbLike, operationId: number): OperationRow | un
 }
 
 export function findOperationByCaseCode(tx: DbLike, code: string): OperationRow | undefined {
+  const normalized = code.trim().toUpperCase();
   return tx
     .select()
     .from(operations)
-    .where(eq(operations.randomCaseCode, code.trim().toUpperCase()))
+    .where(
+      or(eq(operations.caseCode, normalized), eq(operations.randomCaseCode, normalized)),
+    )
     .get();
+}
+
+/** Что показывать как обозначение операции. Старые записи кода врача не имеют. */
+export function displayCaseCode(operation: OperationRow): string {
+  return operation.caseCode ?? operation.randomCaseCode;
+}
+
+// --- Пределы одновременно активных операций ---------------------------------
+
+/**
+ * Сколько операций может идти одновременно — по числу операционных кабинетов.
+ *
+ * Это физическое ограничение клиники, а не настройка интерфейса: третью
+ * операцию просто негде проводить. Константа продублирована триггером в
+ * drizzle/0007_active_operation_limits.sql — менять её нужно в обоих местах.
+ */
+export const OPERATING_ROOMS = 2;
+
+/** Незакрытая операция врача. У врача она может быть только одна. */
+export function findActiveOperationForDoctor(
+  tx: DbLike,
+  doctorId: number,
+): OperationRow | undefined {
+  return tx
+    .select()
+    .from(operations)
+    .where(and(eq(operations.status, 'Active'), eq(operations.doctorId, doctorId)))
+    .get();
+}
+
+export function countActiveOperations(tx: DbLike): number {
+  const row = tx
+    .select({ total: sql<number>`count(*)` })
+    .from(operations)
+    .where(eq(operations.status, 'Active'))
+    .get();
+  return row?.total ?? 0;
+}
+
+/**
+ * Можно ли начать операцию у этого врача.
+ *
+ * Вызывается ВНУТРИ транзакции: BEGIN IMMEDIATE сериализует два параллельных
+ * создания, поэтому подсчёт здесь не гонится с чужой вставкой. Уникальный
+ * индекс и триггер в БД — вторая линия защиты, а не единственная: они дают
+ * гарантию, но не дают понятного сообщения (§14.4).
+ */
+function assertRoomAvailable(tx: DbLike, doctor: { id: number; lastName: string }): void {
+  const busy = findActiveOperationForDoctor(tx, doctor.id);
+  if (busy) {
+    throw errors.doctorHasActiveOperation(doctor.lastName, displayCaseCode(busy));
+  }
+  if (countActiveOperations(tx) >= OPERATING_ROOMS) {
+    throw errors.operatingRoomsBusy(OPERATING_ROOMS);
+  }
 }
 
 export function listOperationLines(tx: DbLike, operationId: number): OperationItemRow[] {
@@ -280,6 +345,8 @@ function replayResult(tx: DbLike, operationId: number, itemIds: number[]): AddTo
 // --- T1: создание операции --------------------------------------------------
 
 export interface StartOperationInput {
+  /** Обязателен: из его кода строится обозначение операции «CH00001». */
+  doctorId: number;
   /** Только значение из закрытого справочника обобщённых категорий (§2.4, Q-2). */
   procedureCategory?: string | null;
 }
@@ -287,29 +354,58 @@ export interface StartOperationInput {
 /**
  * Start New Operation (§7.3, T1).
  * Запись сохраняется на сервере СРАЗУ, до первого скана (§8.1, AC-2.1 шаг 1).
+ *
+ * Код операции складывается из кода врача и сквозного номера этого врача:
+ * CH00001, CH00002, … Номер выдаёт счётчик `code_sequences` внутри той же
+ * транзакции, что и вставка операции, поэтому два одновременных создания
+ * сериализуются писательской блокировкой SQLite, а уникальный индекс на
+ * `case_code` — вторая линия защиты.
+ *
+ * `random_case_code` продолжает генерироваться: §7.3/§18.4 требуют
+ * идентификатор, не выводимый ни из каких данных. Он остаётся внутренним
+ * ключом строки, пользователю показывается `case_code`.
+ *
+ * Два предела проверяются до вставки: у врача не может быть двух незакрытых
+ * операций, а всего их не больше числа операционных кабинетов. §8.5 по-прежнему
+ * допускает несколько активных операций одновременно — просто не больше двух и
+ * не у одного врача.
  */
 export function startOperation(
   db: AppDatabase,
   actor: Actor,
-  input: StartOperationInput = {},
+  input: StartOperationInput,
 ): OperationRow {
   assertAuthenticated(actor);
+  if (!Number.isSafeInteger(input.doctorId) || input.doctorId <= 0) {
+    throw errors.doctorRequired();
+  }
 
   return runInTransaction(db, (tx) => {
+    const doctor = loadSelectableDoctor(tx, input.doctorId);
+    assertRoomAvailable(tx, doctor);
     const now = new Date();
+
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      const code = generateCaseCode();
+      const randomCode = generateCaseCode();
       const clash = tx
         .select({ id: operations.id })
         .from(operations)
-        .where(eq(operations.randomCaseCode, code))
+        .where(eq(operations.randomCaseCode, randomCode))
         .get();
       if (clash) continue;
+
+      const caseNumber = nextCaseNumber(tx, doctor.code);
+      const caseCode = formatCaseCode(doctor.code, caseNumber);
 
       const created = tx
         .insert(operations)
         .values({
-          randomCaseCode: code,
+          randomCaseCode: randomCode,
+          caseCode,
+          caseNumber,
+          doctorId: doctor.id,
+          doctorCodeSnapshot: doctor.code,
+          doctorNameSnapshot: doctor.lastName,
           status: 'Active',
           procedureCategory: input.procedureCategory?.trim() || null,
           totalCostSnapshotCents: null,
@@ -326,12 +422,70 @@ export function startOperation(
         actorRole: actor.role,
         entityType: 'operation',
         entityId: created.id,
-        summary: `Case ${code}`,
+        summary: `Case ${caseCode} (${doctor.lastName})`,
       });
 
       return created;
     }
     throw errors.codeGenerationFailed();
+  });
+}
+
+/**
+ * Смена врача у операции. Только Admin и только пока операция активна.
+ *
+ * Завершённая операция заперта целиком (§9.2, §18.14) — переписывать её
+ * обозначение задним числом нельзя. У активной операция ещё «в руках», и смена
+ * врача здесь — исправление ошибки выбора, поэтому код выдаётся заново из
+ * счётчика НОВОГО врача: иначе обозначение противоречило бы врачу в карточке.
+ * Прежний номер не переиспользуется — счётчик только растёт.
+ */
+export function setOperationDoctor(
+  db: AppDatabase,
+  actor: Actor,
+  operationId: number,
+  doctorId: number,
+): OperationRow {
+  assertAdmin(actor, 'change the doctor of an operation');
+
+  return runInTransaction(db, (tx) => {
+    const operation = loadActiveOperation(tx, operationId);
+    const doctor = loadSelectableDoctor(tx, doctorId);
+    if (operation.doctorId === doctor.id) return operation;
+
+    // Предел кабинетов здесь не проверяется: операция уже идёт, смена врача не
+    // добавляет третью. А вот «одна активная на врача» проверяется — иначе
+    // перенос создал бы у нового врача вторую незакрытую операцию.
+    const busy = findActiveOperationForDoctor(tx, doctor.id);
+    if (busy) throw errors.doctorHasActiveOperation(doctor.lastName, displayCaseCode(busy));
+
+    const caseNumber = nextCaseNumber(tx, doctor.code);
+    const caseCode = formatCaseCode(doctor.code, caseNumber);
+
+    const updated = tx
+      .update(operations)
+      .set({
+        doctorId: doctor.id,
+        doctorCodeSnapshot: doctor.code,
+        doctorNameSnapshot: doctor.lastName,
+        caseCode,
+        caseNumber,
+        updatedAt: new Date(),
+      })
+      .where(eq(operations.id, operation.id))
+      .returning()
+      .get();
+
+    writeAudit(tx, {
+      action: AUDIT_ACTIONS.operationDoctorChanged,
+      actorAccountId: actor.accountId,
+      actorRole: actor.role,
+      entityType: 'operation',
+      entityId: operation.id,
+      summary: `${operation.caseCode ?? operation.randomCaseCode} -> ${caseCode} (${doctor.lastName})`,
+    });
+
+    return updated;
   });
 }
 
@@ -835,7 +989,7 @@ export function finishOperation(
       actorRole: actor.role,
       entityType: 'operation',
       entityId: operation.id,
-      summary: `Case ${operation.randomCaseCode} locked at ${formatCents(total)}`,
+      summary: `Case ${displayCaseCode(operation)} locked at ${formatCents(total)}`,
     });
 
     return finished;
@@ -932,7 +1086,7 @@ export function voidOperation(
       actorRole: actor.role,
       entityType: 'operation',
       entityId: operation.id,
-      summary: `Case ${operation.randomCaseCode} voided, ${returned.length} item(s) returned`,
+      summary: `Case ${displayCaseCode(operation)} voided, ${returned.length} item(s) returned`,
     });
 
     return { operation: voided, returned };
@@ -977,6 +1131,11 @@ export interface OperationListFilters {
    */
   query?: string;
   procedureCategory?: string | null;
+  /** Фильтр по врачу — по строке справочника, а не по снимку кода. */
+  doctorId?: number | null;
+  /** Полуинтервал по времени создания: [fromMs, toMs]. Обе границы включительно. */
+  createdFromMs?: number | null;
+  createdToMs?: number | null;
   limit?: number;
 }
 
@@ -992,11 +1151,27 @@ export function listOperations(tx: DbLike, filters: OperationListFilters = {}): 
   if (query) {
     // Экранирование служебных символов LIKE — как в listItems() (D-22).
     const term = `%${query.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
-    conditions.push(sql`${operations.randomCaseCode} like ${term} escape '\\'`);
+    // Показываемый код и внутренний случайный: персонал диктует первый, но
+    // старые операции до появления справочника врачей имеют только второй.
+    conditions.push(
+      sql`(coalesce(${operations.caseCode}, '') like ${term} escape '\\'
+           or ${operations.randomCaseCode} like ${term} escape '\\')`,
+    );
   }
 
   if (filters.procedureCategory) {
     conditions.push(eq(operations.procedureCategory, filters.procedureCategory));
+  }
+
+  if (filters.doctorId != null) {
+    conditions.push(eq(operations.doctorId, filters.doctorId));
+  }
+
+  if (filters.createdFromMs != null) {
+    conditions.push(sql`${operations.createdAt} >= ${filters.createdFromMs}`);
+  }
+  if (filters.createdToMs != null) {
+    conditions.push(sql`${operations.createdAt} <= ${filters.createdToMs}`);
   }
 
   return tx

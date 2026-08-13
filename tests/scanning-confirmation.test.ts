@@ -22,7 +22,7 @@ describe('barcode confirmation lookup is read-only', () => {
       referenceNumber: 'REF-127',
     });
     const operation = expectSuccess<{ operationId: number }>(
-      startOperationAction(ctx.db, ctx.staff),
+      startOperationAction(ctx.db, ctx.staff, { doctorId: ctx.doctor.id }),
     );
     const stockBefore = getItem(ctx.db, item.id)?.currentQuantity;
     const movementCountBefore = listMovementsForItem(ctx.db, item.id).length;

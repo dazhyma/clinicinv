@@ -21,7 +21,7 @@ describe('AC-4.1: снимок стоимости в завершённой оп
     const ctx = setupTestDb();
     const gauze = makeItem(ctx, FIXTURES.gauze, { referenceNumber: 'REF-1' });
 
-    const operation = startOperation(ctx.db, ctx.staff);
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
     addItemToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
       itemId: gauze.id,
@@ -55,7 +55,7 @@ describe('AC-4.1: снимок стоимости в завершённой оп
     expect(operationTotalCents(ctx.db, getOperation(ctx.db, operation.id)!)).not.toBe(850);
 
     // Новая операция берёт уже $4.25.
-    const next = startOperation(ctx.db, ctx.staff);
+    const next = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
     addItemToOperation(ctx.db, ctx.staff, {
       operationId: next.id,
       itemId: gauze.id,
@@ -73,7 +73,7 @@ describe('AC-4.2: изменение цены не трогает строки �
     const ctx = setupTestDb();
     const gauze = makeItem(ctx, FIXTURES.gauze);
 
-    const operation = startOperation(ctx.db, ctx.staff);
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
     const added = addItemToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
       itemId: gauze.id,
@@ -110,7 +110,7 @@ describe('AC-4.2: изменение цены не трогает строки �
   it('добавление после смены цены создаёт отдельную строку, старая не переписывается', () => {
     const ctx = setupTestDb();
     const gauze = makeItem(ctx, FIXTURES.gauze);
-    const operation = startOperation(ctx.db, ctx.staff);
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
 
     addItemToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
@@ -135,7 +135,7 @@ describe('AC-4.2: изменение цены не трогает строки �
   it('повторный скан при неизменной цене наращивает ту же строку (§7.6)', () => {
     const ctx = setupTestDb();
     const gauze = makeItem(ctx, FIXTURES.gauze);
-    const operation = startOperation(ctx.db, ctx.staff);
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
 
     for (let i = 0; i < 3; i += 1) {
       addItemToOperation(ctx.db, ctx.staff, {
@@ -157,7 +157,7 @@ describe('AC-4.3: изменение атрибутов предмета не п
   it('строка завершённой операции хранит старые name и reference', () => {
     const ctx = setupTestDb();
     const gauze = makeItem(ctx, FIXTURES.gauze, { referenceNumber: 'REF-1' });
-    const operation = startOperation(ctx.db, ctx.staff);
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
     addItemToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
       itemId: gauze.id,

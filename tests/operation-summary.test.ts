@@ -37,7 +37,7 @@ function expectSuccess<T>(result: { ok: boolean }): { ok: true; data: T } {
 
 function startOperation(ctx: TestContext, actor = ctx.staff) {
   return expectSuccess<{ operationId: number; caseCode: string }>(
-    startOperationAction(ctx.db, actor),
+    startOperationAction(ctx.db, actor, { doctorId: ctx.doctor.id }),
   ).data;
 }
 

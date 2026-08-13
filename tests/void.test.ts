@@ -26,7 +26,7 @@ describe('AC-5.1: возврат ровно списанного количес�
     expect(gauze.currentQuantity).toBe(10);
 
     // Шаг 1: операция списывает 2 (два скана по одной единице).
-    const operation = startOperation(ctx.db, ctx.staff);
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
     addItemToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
       itemId: gauze.id,
@@ -112,7 +112,7 @@ describe('AC-5.2 / AC-5.3: повторный Void невозможен', () => 
   it('второй Void отклоняется сообщением «Operation was already voided»', () => {
     const ctx = setupTestDb();
     const gauze = makeItem(ctx, FIXTURES.gauze);
-    const operation = startOperation(ctx.db, ctx.staff);
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
     addItemToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
       itemId: gauze.id,
@@ -140,7 +140,7 @@ describe('AC-5.2 / AC-5.3: повторный Void невозможен', () => 
   it('детерминированный ключ не даёт применить возврат дважды даже в обход статуса', () => {
     const ctx = setupTestDb();
     const gauze = makeItem(ctx, FIXTURES.gauze);
-    const operation = startOperation(ctx.db, ctx.staff);
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
     addItemToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
       itemId: gauze.id,
@@ -170,7 +170,7 @@ describe('AC-5.4: Void с промежуточными возвратами во
     const ctx = setupTestDb();
     const gloves = makeItem(ctx, FIXTURES.gloves); // 50
 
-    const operation = startOperation(ctx.db, ctx.staff);
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
     const added = addItemToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
       itemId: gloves.id,
@@ -201,7 +201,7 @@ describe('AC-5.5: Void активной операции', () => {
     const ctx = setupTestDb();
     const syringe = makeItem(ctx, FIXTURES.syringe); // 20
 
-    const operation = startOperation(ctx.db, ctx.staff);
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
     addItemToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
       itemId: syringe.id,
@@ -230,7 +230,7 @@ describe('AC-5.6: Void недоступен Staff', () => {
   it('сервер отклоняет Void из-под Staff и ничего не меняет', () => {
     const ctx = setupTestDb();
     const gauze = makeItem(ctx, FIXTURES.gauze);
-    const operation = startOperation(ctx.db, ctx.staff);
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
     addItemToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
       itemId: gauze.id,

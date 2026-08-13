@@ -1,19 +1,23 @@
 import Link from 'next/link';
+import { listDoctorsAction, operatingRoomsStatus } from '@/actions/doctors';
 import { listOperationsForActor, type OperationRowView } from '@/actions/operations';
 import { requirePage } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import { AppHeader } from '../_components/app-header';
 import { AutoDismissAlert } from '../_components/auto-dismiss-alert';
 import { Alert, EmptyState, StatusBadge } from '../_components/ui';
+import { CreateOperationDialog } from './_components/create-operation-dialog';
 import { formatDateTime } from './_components/format';
 import { VoidOperationButton } from './_components/void-dialog';
-import { startOperationFormAction } from './actions';
 
 export const dynamic = 'force-dynamic';
 
 interface SearchParams {
   q?: string;
   status?: string;
+  doctorId?: string;
+  dateFrom?: string;
+  dateTo?: string;
   finished?: string;
   voided?: string;
   error?: string;
@@ -38,9 +42,24 @@ export default async function OperationsPage({
 }) {
   const { account, actor } = await requirePage();
   const params = await searchParams;
-  const query = { q: params.q ?? '', status: params.status ?? 'all' };
+  const query = {
+    q: params.q ?? '',
+    status: params.status ?? 'all',
+    doctorId: params.doctorId ?? '',
+    dateFrom: params.dateFrom ?? '',
+    dateTo: params.dateTo ?? '',
+  };
+  const hasFilters = Boolean(
+    query.q || query.doctorId || query.dateFrom || query.dateTo || params.status,
+  );
 
-  const result = listOperationsForActor(getDb(), actor, query);
+  const db = getDb();
+  const result = listOperationsForActor(db, actor, query);
+  // Для выбора при создании — только действующие врачи; для фильтра истории —
+  // и архивные тоже, иначе их прошлые операции нельзя было бы отобрать.
+  const doctors = listDoctorsAction(db, actor);
+  const filterDoctors = listDoctorsAction(db, actor, { includeArchived: true });
+  const rooms = operatingRoomsStatus(db);
 
   return (
     <main className="app-shell flex max-w-6xl flex-col">
@@ -87,6 +106,9 @@ export default async function OperationsPage({
                       Case:{' '}
                       <span className="font-mono text-2xl font-bold">{operation.caseCode}</span>
                     </p>
+                    {operation.doctorName ? (
+                      <p className="text-lg text-slate-700">Doctor: {operation.doctorName}</p>
+                    ) : null}
                     <p className="text-lg text-slate-700">
                       {operation.unitCount} items scanned · {operation.itemCount} unique
                     </p>
@@ -109,15 +131,12 @@ export default async function OperationsPage({
           </div>
         ) : null}
 
-        {/* --- §7.3: Start New Operation --- */}
-        <form action={startOperationFormAction}>
-          <button
-            type="submit"
-            className="ui-button ui-button-primary min-h-13 w-full px-7 text-xl sm:w-auto sm:px-9"
-          >
-            {result.active.length > 0 ? 'Start Another Operation' : 'Start New Operation'}
-          </button>
-        </form>
+        {/* --- §7.3: создание операции. Кнопка осталась на прежнем месте --- */}
+        <CreateOperationDialog
+          doctors={doctors}
+          hasActiveOperations={result.active.length > 0}
+          rooms={rooms}
+        />
       </section>
 
       <section className="app-card bg-[var(--color-surface-muted)]/50 p-4 sm:p-5">
@@ -152,12 +171,70 @@ export default async function OperationsPage({
               {result.canSeeVoided ? <option value="Voided">Voided</option> : null}
             </select>
           </div>
+
+          {/*
+            Два фильтра истории: по врачу и по дате создания. Активные операции
+            они не скрывают — §8.3 требует предлагать возобновление всегда.
+            В списке врачей есть и архивные: иначе история архивированного врача
+            стала бы недоступна.
+          */}
+          <div>
+            <label htmlFor="doctorId" className="text-base font-medium">
+              Doctor
+            </label>
+            <select
+              id="doctorId"
+              name="doctorId"
+              defaultValue={query.doctorId}
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 text-lg"
+            >
+              <option value="">All doctors</option>
+              {filterDoctors.map((doctor) => (
+                <option key={doctor.id} value={doctor.id}>
+                  {doctor.lastName} ({doctor.code}){doctor.archived ? ' · archived' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="dateFrom" className="text-base font-medium">
+              From date
+            </label>
+            <input
+              id="dateFrom"
+              name="dateFrom"
+              type="date"
+              defaultValue={query.dateFrom}
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 text-lg"
+            />
+          </div>
+          <div>
+            <label htmlFor="dateTo" className="text-base font-medium">
+              To date
+            </label>
+            <input
+              id="dateTo"
+              name="dateTo"
+              type="date"
+              defaultValue={query.dateTo}
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 text-lg"
+            />
+          </div>
+
           <button
             type="submit"
             className="rounded-xl border border-slate-300 bg-white px-6 py-3 text-lg font-semibold"
           >
             Apply
           </button>
+          {hasFilters ? (
+            <Link
+              href="/operations"
+              className="rounded-xl px-4 py-3 text-lg text-slate-600 underline underline-offset-4"
+            >
+              Reset
+            </Link>
+          ) : null}
         </form>
 
         <OperationHistory
@@ -225,6 +302,9 @@ function OperationHistory({
             >
               <div className="min-w-40 flex-1">
                 <p className="font-mono text-xl font-bold">{operation.caseCode}</p>
+                {operation.doctorName ? (
+                  <p className="text-base text-slate-700">Doctor: {operation.doctorName}</p>
+                ) : null}
                 <p className="text-base text-slate-600">
                   Created {formatDateTime(operation.createdAtMs)}
                   {operation.finishedAtMs

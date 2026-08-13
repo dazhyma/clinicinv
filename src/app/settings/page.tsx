@@ -37,6 +37,16 @@ export default async function SettingsPage() {
         </p>
         <ButtonLink href="/settings/password" variant="secondary" className="mt-4"><LockIcon size={19} /> Change Password</ButtonLink>
       </Card>
+      <Card className="mb-6 p-5 sm:p-6">
+        <h2 className="text-xl font-semibold">Doctors</h2>
+        <p className="mt-1 max-w-xl text-base text-slate-600">
+          Add or remove doctors and set the two-letter code that prefixes their operation codes,
+          for example CH00001.
+        </p>
+        <ButtonLink href="/settings/doctors" variant="secondary" className="mt-4">
+          Manage Doctors
+        </ButtonLink>
+      </Card>
       <SettingsForm settings={settings} />
     </main>
   );

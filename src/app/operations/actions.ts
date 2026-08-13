@@ -21,6 +21,7 @@ import { redirect } from 'next/navigation';
 import {
   addItemToOperationAction,
   changeLineQuantityAction,
+  changeOperationDoctorAction,
   finishOperationAction,
   scanIntoOperationAction,
   searchItemsForOperationAction,
@@ -30,6 +31,7 @@ import {
   type FinishedOperation,
   type ItemSearchResultView,
   type OperationMutationResult,
+  type OperationStateView,
   type VoidedOperation,
 } from '@/actions/operations';
 import { toFailure, type ActionFailure, type ActionResult } from '@/actions/result';
@@ -51,17 +53,36 @@ async function actorOrFailure(): Promise<{ actor: Actor } | { failure: ActionFai
  * Создаёт операцию и открывает экран сканирования (§7.3, шаги 4–5).
  * Существующие активные операции не затрагиваются (§8.5, §18.24).
  */
-export async function startOperationFormAction(): Promise<void> {
+export async function startOperationFormAction(formData: FormData): Promise<void> {
   const auth = await actorOrFailure();
   if ('failure' in auth) redirect('/login');
 
-  const result = startOperationAction(getDb(), auth.actor);
+  const result = startOperationAction(getDb(), auth.actor, {
+    doctorId: String(formData.get('doctorId') ?? ''),
+  });
   // Ошибка не должна оставлять пользователя на пустом экране: конкретное
   // сообщение возвращается в раздел Operations (§14.4).
   if (!result.ok) redirect(`/operations?error=${encodeURIComponent(result.error)}`);
 
   revalidatePath('/operations');
   redirect(`/operations/${result.data.operationId}`);
+}
+
+// --- Смена врача у активной операции (только Admin) -------------------------
+
+export async function changeOperationDoctorServerAction(
+  input: { operationId: number; doctorId: number },
+): Promise<ActionResult<OperationStateView>> {
+  const auth = await actorOrFailure();
+  if ('failure' in auth) return auth.failure;
+
+  // Роль проверяется в действии и ещё раз в домене (D-10).
+  const result = changeOperationDoctorAction(getDb(), auth.actor, input);
+  if (result.ok) {
+    revalidatePath('/operations');
+    revalidatePath(`/operations/${input.operationId}`);
+  }
+  return result;
 }
 
 // --- Скан и ручное добавление (§7.5, §7.8) ----------------------------------

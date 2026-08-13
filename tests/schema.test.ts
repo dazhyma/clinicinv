@@ -260,6 +260,11 @@ describe('Приватность схемы (§2.4, §18.3, AC-9.5)', () => {
     ).map((t) => t.name);
 
     for (const table of tables) {
+      // `doctors` — справочник СОТРУДНИКОВ, а не пациентов: §2.4 и §18.3
+      // запрещают хранить пациента, врача они не касаются. Исключение адресное,
+      // именно поэтому оно названо таблицей, а не отключением проверки.
+      if (table === 'doctors') continue;
+
       const columns = (
         ctx.sqlite.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]
       ).map((c) => c.name.toLowerCase());

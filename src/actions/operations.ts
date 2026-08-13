@@ -37,6 +37,7 @@ import {
   addItemToOperation,
   addPackToOperation,
   calculateOperationTotalCents,
+  displayCaseCode,
   finishOperation,
   getOperation,
   listOperationLines,
@@ -44,6 +45,7 @@ import {
   operationTotalCents,
   resolveScannedBarcode,
   setLineQuantity,
+  setOperationDoctor,
   startOperation,
   summarizeOperations,
   undoLastScan,
@@ -100,7 +102,14 @@ export interface OperationLineView {
 
 export interface OperationStateView {
   id: number;
+  /** Обозначение операции «CH00001». У записей до справочника — прежний код. */
   caseCode: string;
+  doctorId: number | null;
+  doctorCode: string | null;
+  /** Снимок фамилии: архивирование врача карточку не меняет. */
+  doctorName: string | null;
+  /** Сменить врача можно только у активной операции и только Admin. */
+  canChangeDoctor: boolean;
   status: OperationStatus;
   procedureCategory: string | null;
   createdAtMs: number;
@@ -168,7 +177,10 @@ function toStateView(tx: DbLike, actor: Actor, operation: OperationRow): Operati
 
   const view: OperationStateView = {
     id: operation.id,
-    caseCode: operation.randomCaseCode,
+    caseCode: displayCaseCode(operation),
+    doctorId: operation.doctorId,
+    doctorCode: operation.doctorCodeSnapshot,
+    doctorName: operation.doctorNameSnapshot,
     status: operation.status,
     procedureCategory: operation.procedureCategory,
     createdAtMs: operation.createdAt.getTime(),
@@ -182,6 +194,7 @@ function toStateView(tx: DbLike, actor: Actor, operation: OperationRow): Operati
     showCost,
     canVoid: isAdmin(actor) && operation.status !== 'Voided',
     canEdit: operation.status === 'Active',
+    canChangeDoctor: isAdmin(actor) && operation.status === 'Active',
   };
 
   if (!showCost) return view;
@@ -212,6 +225,9 @@ export function getOperationState(
 export interface OperationRowView {
   id: number;
   caseCode: string;
+  doctorId: number | null;
+  doctorCode: string | null;
+  doctorName: string | null;
   status: OperationStatus;
   procedureCategory: string | null;
   createdAtMs: number;
@@ -228,7 +244,32 @@ export interface OperationListQuery {
   q?: string;
   /** 'all' | 'Active' | 'Finished' | 'Voided'. */
   status?: string;
+  /** Фильтр по врачу: id строки справочника или пусто. */
+  doctorId?: string | number;
+  /** Фильтр по дате создания, YYYY-MM-DD включительно. Обе границы опциональны. */
+  dateFrom?: string;
+  dateTo?: string;
   limit?: number;
+}
+
+/**
+ * Границы суток по локальному времени клиники.
+ *
+ * `new Date('2026-08-13')` в JS — ПОЛНОЧЬ UTC, а не местная: в клинике с
+ * отрицательным смещением фильтр «за 13 августа» молча терял утренние операции.
+ * Поэтому дата разбирается покомпонентно и превращается в местную полночь.
+ */
+function parseDayBoundary(value: string | undefined, edge: 'start' | 'end'): number | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value?.trim() ?? '');
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date =
+    edge === 'start'
+      ? new Date(year, month - 1, day, 0, 0, 0, 0)
+      : new Date(year, month - 1, day, 23, 59, 59, 999);
+  return Number.isNaN(date.getTime()) ? null : date.getTime();
 }
 
 export interface OperationListResult {
@@ -250,7 +291,10 @@ function toRowView(
   const { operation } = summary;
   const view: OperationRowView = {
     id: operation.id,
-    caseCode: operation.randomCaseCode,
+    caseCode: displayCaseCode(operation),
+    doctorId: operation.doctorId,
+    doctorCode: operation.doctorCodeSnapshot,
+    doctorName: operation.doctorNameSnapshot,
     status: operation.status,
     procedureCategory: operation.procedureCategory,
     createdAtMs: operation.createdAt.getTime(),
@@ -286,18 +330,37 @@ export function listOperationsForActor(
   const requested = OPERATION_STATUSES.find((status) => status === query.status);
   const selected = requested && allowed.includes(requested) ? [requested] : allowed;
 
+  const doctorId = Number(query.doctorId);
+  const filters = {
+    query: query.q,
+    doctorId: Number.isSafeInteger(doctorId) && doctorId > 0 ? doctorId : null,
+    createdFromMs: parseDayBoundary(query.dateFrom, 'start'),
+    createdToMs: parseDayBoundary(query.dateTo, 'end'),
+    limit: query.limit,
+  };
+
   const block = (status: OperationStatus): OperationRowView[] => {
     if (!selected.includes(status)) return [];
     return summarizeOperations(
       db,
-      listOperations(db, { statuses: [status], query: query.q, limit: query.limit }),
+      listOperations(db, { ...filters, statuses: [status] }),
     ).map((summary) => toRowView(summary, options));
   };
 
   const finished = block('Finished');
 
   const result: OperationListResult = {
-    active: block('Active'),
+    /*
+     * Фильтры даты и врача намеренно НЕ применяются к активным операциям:
+     * §8.3 требует предлагать возобновление при каждом возвращении в раздел, а
+     * фильтр «за прошлую неделю» спрятал бы незакрытую операцию.
+     */
+    active: selected.includes('Active')
+      ? summarizeOperations(
+          db,
+          listOperations(db, { statuses: ['Active'], query: query.q, limit: query.limit }),
+        ).map((summary) => toRowView(summary, options))
+      : [],
     finished,
     voided: block('Voided'),
     showCost,
@@ -316,6 +379,7 @@ export function listOperationsForActor(
 export interface StartedOperation {
   operationId: number;
   caseCode: string;
+  doctorName: string | null;
 }
 
 /**
@@ -332,11 +396,41 @@ export interface StartedOperation {
 export function startOperationAction(
   db: AppDatabase,
   actor: Actor,
+  input: { doctorId?: RawFormValue } = {},
 ): ActionResult<StartedOperation> {
+  const v = new FieldValidator();
+  const doctorId = v.requiredInteger('doctorId', input.doctorId, 'Doctor', { min: 1 });
+  if (v.hasErrors) return failFields(v.errors, 'Select a doctor to start an operation');
+
   return runAction(() => {
-    const operation = startOperation(db, actor);
-    return { operationId: operation.id, caseCode: operation.randomCaseCode };
+    const operation = startOperation(db, actor, { doctorId });
+    return {
+      operationId: operation.id,
+      caseCode: displayCaseCode(operation),
+      doctorName: operation.doctorNameSnapshot,
+    };
   });
+}
+
+/**
+ * Смена врача у активной операции (только Admin).
+ *
+ * Обозначение выдаётся заново из счётчика нового врача — см. комментарий к
+ * `setOperationDoctor()`. Прежний номер не переиспользуется.
+ */
+export function changeOperationDoctorAction(
+  db: AppDatabase,
+  actor: Actor,
+  input: { operationId?: RawFormValue; doctorId?: RawFormValue },
+): ActionResult<OperationStateView> {
+  if (!isAdmin(actor)) return forbidden('change the doctor of an operation');
+
+  const v = new FieldValidator();
+  const operationId = v.requiredInteger('operationId', input.operationId, 'Operation', { min: 1 });
+  const doctorId = v.requiredInteger('doctorId', input.doctorId, 'Doctor', { min: 1 });
+  if (v.hasErrors) return failFields(v.errors);
+
+  return runAction(() => toStateView(db, actor, setOperationDoctor(db, actor, operationId, doctorId)));
 }
 
 // --- Общий результат мутации ------------------------------------------------
@@ -618,7 +712,7 @@ export function finishOperationAction(
 
     const result: FinishedOperation = {
       operationId: finished.id,
-      caseCode: finished.randomCaseCode,
+      caseCode: displayCaseCode(finished),
       itemCount: new Set(lines.map((line) => line.itemId)).size,
       unitCount: lines.reduce((sum, line) => sum + line.quantity, 0),
     };
@@ -665,7 +759,7 @@ export function voidOperationAction(
     const returned = result.returned.filter((entry) => entry.quantity !== 0);
     return {
       operationId: result.operation.id,
-      caseCode: result.operation.randomCaseCode,
+      caseCode: displayCaseCode(result.operation),
       returnedItems: returned.length,
       returnedUnits: returned.reduce((sum, entry) => sum + entry.quantity, 0),
     };
@@ -807,7 +901,7 @@ export function getOperationSummary(
 
   const base: Omit<OperationSummaryView, 'text'> = {
     operationId: operation.id,
-    caseCode: operation.randomCaseCode,
+    caseCode: displayCaseCode(operation),
     lines,
     itemCount: lines.length,
     unitCount: rows.reduce((sum, row) => sum + row.quantity, 0),

@@ -226,6 +226,36 @@ export const packItems = sqliteTable(
   ],
 );
 
+// --- Врачи (новое дополнение к ТЗ) ------------------------------------------
+
+/**
+ * Справочник врачей. Ведёт только Admin (§3.2).
+ *
+ * Врач — сотрудник, а не пациент, поэтому фамилия здесь допустима и §2.4/§18.3
+ * не нарушает. `code` — префикс кода операции: две буквы по умолчанию, но поле
+ * остаётся редактируемым, поэтому длина ограничена диапазоном в DDL.
+ */
+export const doctors = sqliteTable(
+  'doctors',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    code: text('code').notNull(),
+    lastName: text('last_name').notNull(),
+    fullName: text('full_name'),
+    status: text('status', { enum: ENTITY_STATUSES }).notNull().default('active'),
+    /** Врач с операциями не удаляется физически, а архивируется — как Item. */
+    archivedAt: integer('archived_at', { mode: 'timestamp_ms' }),
+    archivedByAccountId: integer('archived_by_account_id').references(() => userAccounts.id),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    uniqueIndex('ux_doctors_code').on(t.code),
+    index('ix_doctors_status').on(t.status),
+    index('ix_doctors_last_name').on(t.lastName),
+  ],
+);
+
 // --- Operation (§17.4) ------------------------------------------------------
 
 export const operations = sqliteTable(
@@ -234,6 +264,16 @@ export const operations = sqliteTable(
     id: integer('id').primaryKey({ autoIncrement: true }),
     /** Случайный код записи. НЕ идентификатор пациента (§7.3, §18.4). */
     randomCaseCode: text('random_case_code').notNull(),
+    /**
+     * Показываемый код операции «CH00001». Постоянен и не переиспользуется:
+     * номер выдаёт счётчик `code_sequences`, а не COUNT(*).
+     */
+    caseCode: text('case_code'),
+    caseNumber: integer('case_number'),
+    doctorId: integer('doctor_id').references(() => doctors.id),
+    /** Снимки: архивирование врача не меняет уже созданную операцию. */
+    doctorCodeSnapshot: text('doctor_code_snapshot'),
+    doctorNameSnapshot: text('doctor_name_snapshot'),
     status: text('status', { enum: OPERATION_STATUSES }).notNull(),
     /** Только значение из закрытого справочника обобщённых категорий (§2.4, Q-2). */
     procedureCategory: text('procedure_category'),
@@ -250,6 +290,13 @@ export const operations = sqliteTable(
   },
   (t) => [
     uniqueIndex('ux_operations_case_code').on(t.randomCaseCode),
+    uniqueIndex('ux_operations_case_code_display').on(t.caseCode),
+    // Одна активная операция на врача. Предел «двух кабинетов» индексом не
+    // выражается и живёт триггером в drizzle/0007_active_operation_limits.sql.
+    uniqueIndex('ux_operations_single_active_per_doctor')
+      .on(t.doctorId)
+      .where(sql`${t.status} = 'Active' and ${t.doctorId} is not null`),
+    index('ix_operations_doctor').on(t.doctorId, t.createdAt),
     index('ix_operations_status_created').on(t.status, t.createdAt),
     index('ix_operations_created').on(t.createdAt),
     index('ix_operations_category').on(t.procedureCategory),
@@ -482,6 +529,7 @@ export const allTables = {
   items,
   packs,
   packItems,
+  doctors,
   operations,
   operationItems,
   operationEvents,
@@ -498,6 +546,7 @@ export const NOW = sql`(CAST(strftime('%s', 'now') AS INTEGER) * 1000)`;
 export type ItemRow = typeof items.$inferSelect;
 export type PackRow = typeof packs.$inferSelect;
 export type PackItemRow = typeof packItems.$inferSelect;
+export type DoctorRow = typeof doctors.$inferSelect;
 export type OperationRow = typeof operations.$inferSelect;
 export type OperationItemRow = typeof operationItems.$inferSelect;
 export type InventoryMovementRow = typeof inventoryMovements.$inferSelect;

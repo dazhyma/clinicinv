@@ -4,8 +4,9 @@
  */
 import type { AppDatabase } from '@/db/client';
 import { createInMemoryConnection } from '@/db/testing';
-import { userAccounts } from '@/db/schema';
+import { userAccounts, type DoctorRow } from '@/db/schema';
 import type { Actor } from '@/domain/actor';
+import { createDoctor } from '@/domain/doctors';
 import { createItem } from '@/domain/items';
 import { createPack } from '@/domain/packs';
 import { setSetting, SETTING_KEYS } from '@/domain/settings';
@@ -15,6 +16,8 @@ export interface TestContext {
   sqlite: ReturnType<typeof createInMemoryConnection>['sqlite'];
   admin: Actor;
   staff: Actor;
+  /** Врач по умолчанию: без него операция не создаётся. */
+  doctor: DoctorRow;
 }
 
 export function setupTestDb(): TestContext {
@@ -49,12 +52,20 @@ export function setupTestDb(): TestContext {
     .returning()
     .get();
 
+  const admin: Actor = { accountId: adminRow.id, role: 'Admin' };
+
   return {
     db,
     sqlite,
-    admin: { accountId: adminRow.id, role: 'Admin' },
+    admin,
     staff: { accountId: staffRow.id, role: 'Staff' },
+    // Код CH взят из примера заказчика: операции этого врача — CH00001, CH00002…
+    doctor: createDoctor(db, admin, { lastName: 'Chen' }),
   };
+}
+
+export function makeDoctor(ctx: TestContext, lastName: string, code?: string) {
+  return createDoctor(ctx.db, ctx.admin, { lastName, code });
 }
 
 /** Тестовые данные из docs/acceptance-criteria.md. */

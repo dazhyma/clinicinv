@@ -23,7 +23,7 @@ import {
 import { operations } from '@/db/schema';
 import { getItem, updateItem } from '@/domain/items';
 import { findStockInvariantMismatches, listMovementsForOperation } from '@/domain/movements';
-import { FIXTURES, makeBasicPack, makeItem, nextClientEventId, setNegativeStockMode, setupTestDb, type TestContext } from './helpers';
+import { FIXTURES, makeBasicPack, makeDoctor, makeItem, nextClientEventId, setNegativeStockMode, setupTestDb, type TestContext } from './helpers';
 
 function expectSuccess<T>(result: { ok: boolean }): { ok: true; data: T } {
   if (!result.ok) throw new Error(`Expected success, got: ${JSON.stringify(result)}`);
@@ -35,9 +35,9 @@ function expectFailure(result: { ok: boolean }) {
   return result as { ok: false; error: string; code: string };
 }
 
-function startOperation(ctx: TestContext, actor = ctx.staff) {
+function startOperation(ctx: TestContext, actor = ctx.staff, doctorId = ctx.doctor.id) {
   return expectSuccess<{ operationId: number; caseCode: string }>(
-    startOperationAction(ctx.db, actor),
+    startOperationAction(ctx.db, actor, { doctorId }),
   ).data;
 }
 
@@ -491,7 +491,8 @@ describe('Finish фиксирует итог, и он не меняется от
     const first = expectSuccess<{ caseCode: string }>(
       finishOperationAction(ctx.db, ctx.admin, operation.operationId),
     ).data;
-    expect(first.caseCode).toHaveLength(6);
+    // Обозначение операции — код врача плюс пять цифр, без разделителя.
+    expect(first.caseCode).toMatch(/^[A-Z]{2,4}\d{5}$/);
 
     const second = expectFailure(finishOperationAction(ctx.db, ctx.admin, operation.operationId));
     expect(second.error).toBe('Operation was already finished');
@@ -640,7 +641,8 @@ describe('Новая операция не перезаписывает суще
       }),
     );
 
-    const second = startOperation(ctx);
+    // §8.5: две активные операции сосуществуют — у разных врачей, по одному кабинету на каждую.
+    const second = startOperation(ctx, ctx.staff, makeDoctor(ctx, 'Wong').id);
     expectSuccess(
       scanIntoOperationAction(ctx.db, ctx.staff, {
         operationId: second.operationId,

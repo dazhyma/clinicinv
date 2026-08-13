@@ -34,6 +34,11 @@ export const DOMAIN_ERROR_CODES = [
   'INVALID_CREDENTIALS',
   'COUNT_NOT_FOUND',
   'COUNT_NOT_DRAFT',
+  'DOCTOR_NOT_FOUND',
+  'DOCTOR_INACTIVE',
+  'DOCTOR_REQUIRED',
+  'DOCTOR_HAS_ACTIVE_OPERATION',
+  'OPERATING_ROOMS_BUSY',
 ] as const;
 
 export type DomainErrorCode = (typeof DOMAIN_ERROR_CODES)[number];
@@ -147,4 +152,38 @@ export const errors = {
 
   countNotDraft: (status?: string) =>
     new DomainError('COUNT_NOT_DRAFT', 'This inventory count is already closed', { status }),
+
+  doctorNotFound: (doctorId?: number) =>
+    new DomainError('DOCTOR_NOT_FOUND', 'Doctor not found', { doctorId }),
+
+  doctorInactive: (lastName?: string) =>
+    new DomainError(
+      'DOCTOR_INACTIVE',
+      lastName ? `Doctor is archived: ${lastName}` : 'Doctor is archived',
+      { lastName },
+    ),
+
+  /** Без врача код операции построить не из чего — операция не создаётся. */
+  doctorRequired: () =>
+    new DomainError('DOCTOR_REQUIRED', 'Select a doctor to start an operation', {
+      field: 'doctorId',
+    }),
+
+  /**
+   * §14.4: сообщение называет и врача, и код незакрытой операции — иначе
+   * персоналу пришлось бы искать её по списку, стоя у операционного стола.
+   */
+  doctorHasActiveOperation: (lastName: string, caseCode: string) =>
+    new DomainError(
+      'DOCTOR_HAS_ACTIVE_OPERATION',
+      `${lastName} already has an active operation (${caseCode}). Finish it before starting another.`,
+      { lastName, caseCode, field: 'doctorId' },
+    ),
+
+  operatingRoomsBusy: (rooms: number) =>
+    new DomainError(
+      'OPERATING_ROOMS_BUSY',
+      `All ${rooms} operating rooms are in use. Finish an operation before starting another.`,
+      { rooms },
+    ),
 };

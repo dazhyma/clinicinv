@@ -75,6 +75,51 @@ export function generateCaseCode(): string {
   return code;
 }
 
+// --- Код операции «CH00001» --------------------------------------------------
+
+/**
+ * Правила самого кода врача живут в `doctor-code.ts` без серверных импортов:
+ * их же использует клиентская форма справочника, чтобы подсказка и валидация
+ * не разошлись.
+ */
+export {
+  CASE_NUMBER_DIGITS,
+  DOCTOR_CODE_MAX_LENGTH,
+  DOCTOR_CODE_MIN_LENGTH,
+  formatCaseCode,
+  isValidDoctorCode,
+  normalizeDoctorCode,
+  suggestDoctorCode,
+} from './doctor-code';
+
+/** Ключ счётчика врача в `code_sequences`. Префикс разводит его с ITM/PCK. */
+function doctorSequenceKey(doctorCode: string): string {
+  return `DOC:${doctorCode}`;
+}
+
+/**
+ * Следующий номер операции для врача. Вызывать только внутри транзакции.
+ *
+ * Счётчик живёт отдельно от строки врача намеренно: удалённый и заново
+ * заведённый под тем же кодом врач продолжает нумерацию, а не выдаёт CH00001
+ * второй раз. Вторая линия защиты — уникальный индекс на `operations.case_code`.
+ */
+export function nextCaseNumber(tx: DbLike, doctorCode: string): number {
+  const key = doctorSequenceKey(doctorCode);
+  tx.insert(codeSequences).values({ prefix: key, nextValue: 1 }).onConflictDoNothing().run();
+
+  const row = tx
+    .update(codeSequences)
+    .set({ nextValue: sql`${codeSequences.nextValue} + 1` })
+    .where(eq(codeSequences.prefix, key))
+    .returning({ nextValue: codeSequences.nextValue })
+    .get();
+
+  if (!row) throw errors.codeGenerationFailed();
+  // RETURNING в SQLite отдаёт значение ПОСЛЕ обновления.
+  return row.nextValue - 1;
+}
+
 /** Нормализация строки, пришедшей со сканера: обрезка и верхний регистр. */
 export function normalizeScannedCode(raw: string): string {
   return raw.trim().toUpperCase();

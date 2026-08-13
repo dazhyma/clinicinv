@@ -187,7 +187,7 @@ describe('Изменение состава пака не меняет заве�
   it('состав, количества и итог завершённой операции остаются исходными', () => {
     const { ctx, gauze, gloves, syringe, mask, packId } = buildScenario();
 
-    const operation = startOperation(ctx.db, ctx.staff);
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
     addPackToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
       packId,

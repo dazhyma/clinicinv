@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { listDoctorsAction } from '@/actions/doctors';
 import {
   getOperationState,
   getOperationSummary,
@@ -11,6 +12,7 @@ import { requirePage } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import { AppHeader } from '../../_components/app-header';
 import { CopySummaryButton } from '../_components/copy-summary';
+import { OperationDoctorBar } from '../_components/doctor-bar';
 import { formatDateTime } from '../_components/format';
 import { OperationScreen } from '../_components/operation-screen';
 import { SummaryTable } from '../_components/summary-table';
@@ -137,6 +139,14 @@ export default async function OperationPage({ params }: { params: Promise<{ id: 
         backLabel="Operations"
         account={{ username: account.username, role: account.role }}
       />
+      <OperationDoctorBar
+        operationId={state.id}
+        doctorId={state.doctorId}
+        doctorName={state.doctorName}
+        caseCode={state.caseCode}
+        canChange={state.canChangeDoctor}
+        doctors={listDoctorsAction(db, actor)}
+      />
       <OperationScreen
         initialState={state}
         soundEnabled={soundOnScanEnabled(db)}
@@ -155,6 +165,8 @@ function OperationHeaderCard({ state }: { state: OperationStateView }) {
   const rows: { label: string; value: string }[] = [
     { label: 'Created', value: formatDateTime(state.createdAtMs) },
   ];
+  // Снимок фамилии: архивирование или переименование врача карточку не меняет.
+  if (state.doctorName) rows.push({ label: 'Doctor', value: state.doctorName });
   if (state.finishedAtMs) rows.push({ label: 'Finished', value: formatDateTime(state.finishedAtMs) });
   if (state.voidedAtMs) rows.push({ label: 'Voided', value: formatDateTime(state.voidedAtMs) });
   if (state.procedureCategory) rows.push({ label: 'Category', value: state.procedureCategory });

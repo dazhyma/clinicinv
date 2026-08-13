@@ -38,7 +38,7 @@ describe('AC-3.1: один скан добавляет весь состав', (
     expect(packCurrentCostCents(ctx.db, pack.id)).toBe(870);
     expect(pack.internalCode).toMatch(/^PCK-\d{6}$/);
 
-    const operation = startOperation(ctx.db, ctx.staff);
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
     const result = addPackToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
       packId: pack.id,
@@ -77,7 +77,7 @@ describe('AC-3.1: один скан добавляет весь состав', (
 
   it('повторная отправка того же скана пака ничего не задваивает', () => {
     const { ctx, gauze, gloves, syringe, pack } = buildScenario();
-    const operation = startOperation(ctx.db, ctx.staff);
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
     const clientEventId = 'pack-retry';
 
     const first = addPackToOperation(ctx.db, ctx.staff, {
@@ -106,7 +106,7 @@ describe('AC-3.2: скан пака атомарен (§16)', () => {
     // Вторая позиция пака выведена из оборота.
     updateItem(ctx.db, ctx.admin, gloves.id, { status: 'inactive' });
 
-    const operation = startOperation(ctx.db, ctx.staff);
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
     expect(() =>
       addPackToOperation(ctx.db, ctx.staff, {
         operationId: operation.id,
@@ -129,7 +129,7 @@ describe('AC-3.3: изменение состава пака не меняет �
   it('завершённая операция сохраняет исходный состав и итог $8.70', () => {
     const { ctx, gauze, gloves, syringe, mask, pack } = buildScenario();
 
-    const operation = startOperation(ctx.db, ctx.staff);
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
     addPackToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
       packId: pack.id,
@@ -164,7 +164,7 @@ describe('AC-3.3: изменение состава пака не меняет �
     expect(getItem(ctx.db, mask.id)!.currentQuantity).toBe(100);
 
     // Новый скан использует новый состав.
-    const next = startOperation(ctx.db, ctx.staff);
+    const next = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
     addPackToOperation(ctx.db, ctx.staff, {
       operationId: next.id,
       packId: pack.id,
@@ -180,7 +180,7 @@ describe('AC-3.3: изменение состава пака не меняет �
 describe('AC-4.4: стоимость пака следует за ценами, история — нет', () => {
   it('после роста цены Gauze пак стоит $11.20, а завершённая операция — $8.70', () => {
     const { ctx, gauze, pack } = buildScenario();
-    const operation = startOperation(ctx.db, ctx.staff);
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
     addPackToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
       packId: pack.id,
@@ -200,7 +200,7 @@ describe('AC-3.4: предмет в нескольких паках и отде�
     const { ctx, gauze, pack } = buildScenario();
     const extraPack = makeBasicPack(ctx, [{ itemId: gauze.id, quantity: 1 }], 'Extra Pack');
 
-    const operation = startOperation(ctx.db, ctx.staff);
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
     addPackToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
       packId: pack.id,

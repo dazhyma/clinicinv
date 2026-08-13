@@ -21,6 +21,7 @@
 import { and, desc, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import type { AppDatabase, DbLike, Tx } from '@/db/client';
 import {
+  inventoryMovements,
   items,
   operationEvents,
   operationItems,
@@ -1090,6 +1091,84 @@ export function voidOperation(
     });
 
     return { operation: voided, returned };
+  });
+}
+
+export interface DeleteVoidedOperationResult {
+  operationId: number;
+  caseCode: string;
+  deletedLines: number;
+  deletedEvents: number;
+  deletedMovements: number;
+}
+
+/**
+ * Окончательное удаление Voided operation. Только Admin и только после Void:
+ * остаток здесь не меняется, а компенсирующие складские движения удаляются
+ * вместе с историей операции по явному решению заказчика.
+ */
+export function deleteVoidedOperation(
+  db: AppDatabase,
+  actor: Actor,
+  operationId: number,
+): DeleteVoidedOperationResult {
+  assertAdmin(actor, 'delete voided operation');
+
+  return runInTransaction(db, (tx) => {
+    const operation = getOperation(tx, operationId);
+    if (!operation) throw errors.operationNotFound(operationId);
+    if (operation.status !== 'Voided') throw errors.operationNotVoided();
+
+    // Void обязан свести чистое влияние операции на каждый Item к нулю. Если
+    // старая или повреждённая запись этому не соответствует, удаление журнала
+    // скрыло бы расхождение current_quantity == SUM(movements), поэтому стоп.
+    const unbalanced = tx
+      .select({
+        itemId: inventoryMovements.itemId,
+        net: sql<number>`sum(${inventoryMovements.quantityDelta})`,
+      })
+      .from(inventoryMovements)
+      .where(eq(inventoryMovements.operationId, operation.id))
+      .groupBy(inventoryMovements.itemId)
+      .all()
+      .find((row) => Number(row.net) !== 0);
+    if (unbalanced) {
+      throw errors.validationFailed(
+        'Voided operation movements are not balanced; operation was not deleted',
+      );
+    }
+
+    const deletedMovements = tx
+      .delete(inventoryMovements)
+      .where(eq(inventoryMovements.operationId, operation.id))
+      .run().changes;
+    const deletedEvents = tx
+      .delete(operationEvents)
+      .where(eq(operationEvents.operationId, operation.id))
+      .run().changes;
+    const deletedLines = tx
+      .delete(operationItems)
+      .where(eq(operationItems.operationId, operation.id))
+      .run().changes;
+    tx.delete(operations).where(eq(operations.id, operation.id)).run();
+
+    const caseCode = displayCaseCode(operation);
+    writeAudit(tx, {
+      action: AUDIT_ACTIONS.operationDeleted,
+      actorAccountId: actor.accountId,
+      actorRole: actor.role,
+      entityType: 'operation',
+      entityId: operation.id,
+      summary: `Voided case ${caseCode} permanently deleted`,
+    });
+
+    return {
+      operationId: operation.id,
+      caseCode,
+      deletedLines,
+      deletedEvents,
+      deletedMovements,
+    };
   });
 }
 

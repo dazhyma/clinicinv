@@ -38,6 +38,7 @@ export const AUDIT_ACTIONS = {
   operationDoctorChanged: 'operation.doctor_changed',
   operationFinished: 'operation.finished',
   operationVoided: 'operation.voided',
+  operationDeleted: 'operation.deleted',
   settingChanged: 'setting.changed',
 } as const;
 

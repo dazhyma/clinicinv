@@ -12,6 +12,7 @@ import { errors } from '@/domain/errors';
 import { listItems } from '@/domain/items';
 import { resolveScannedBarcode } from '@/domain/operations';
 import { listPacks } from '@/domain/packs';
+import { normalizeSearchCode } from '@/lib/search-normalization';
 import { runAction, type ActionResult } from './result';
 
 export interface BarcodeConfirmationComponentView {
@@ -51,12 +52,28 @@ function relevance(
   rawQuery: string,
 ): number {
   const query = rawQuery.toLocaleLowerCase();
+  const normalizedQuery = normalizeSearchCode(rawQuery);
   const name = row.name.toLocaleLowerCase();
   const code = row.internalCode.toLocaleLowerCase();
   const reference = row.referenceNumber?.toLocaleLowerCase() ?? '';
   if (name === query || code === query || reference === query) return 0;
+  if (
+    normalizedQuery &&
+    [row.name, row.internalCode, row.referenceNumber].some(
+      (value) => value != null && normalizeSearchCode(value) === normalizedQuery,
+    )
+  ) return 0;
   if (code.startsWith(query) || reference.startsWith(query)) return 1;
-  if (name.startsWith(query)) return 2;
+  if (
+    normalizedQuery &&
+    [row.internalCode, row.referenceNumber].some(
+      (value) => value != null && normalizeSearchCode(value).startsWith(normalizedQuery),
+    )
+  ) return 1;
+  if (
+    name.startsWith(query) ||
+    (normalizedQuery && normalizeSearchCode(row.name).startsWith(normalizedQuery))
+  ) return 2;
   return 3;
 }
 

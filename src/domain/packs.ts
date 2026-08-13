@@ -22,6 +22,7 @@ import {
   type ItemRow,
   type PackRow,
 } from '@/db/schema';
+import { normalizeSearchCode } from '@/lib/search-normalization';
 import { assertAdmin, type Actor } from './actor';
 import { AUDIT_ACTIONS, writeAudit } from './audit';
 import { nextInternalCode, normalizeScannedCode, PACK_CODE_PREFIX } from './codes';
@@ -312,11 +313,20 @@ export function listPacks(
   const term = options.query?.trim();
   if (term) {
     const pattern = `%${term.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
-    const match = or(
+    const originalMatch = or(
       sql`${packs.name} like ${pattern} escape '\\'`,
       sql`${packs.internalCode} like ${pattern} escape '\\'`,
       sql`${packs.barcodeValue} like ${pattern} escape '\\'`,
     );
+    const normalized = normalizeSearchCode(term);
+    const match = normalized
+      ? or(
+          originalMatch,
+          sql`normalize_code(${packs.name}) like ${`%${normalized}%`}`,
+          sql`normalize_code(${packs.internalCode}) like ${`%${normalized}%`}`,
+          sql`normalize_code(${packs.barcodeValue}) like ${`%${normalized}%`}`,
+        )
+      : originalMatch;
     if (match) conditions.push(match);
   }
   const query = tx.select().from(packs);

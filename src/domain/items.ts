@@ -5,7 +5,7 @@
  * Каждое изменение проверяет право внутри домена (§3.2, §18.22). Receive Stock
  * доступен Staff и Admin; создание, редактирование и adjustment — только Admin.
  */
-import { and, eq, like, or, sql, type SQL } from 'drizzle-orm';
+import { and, eq, or, sql, type SQL } from 'drizzle-orm';
 import type { AppDatabase, DbLike } from '@/db/client';
 import {
   barcodeRegistry,
@@ -19,6 +19,7 @@ import {
   type EntityStatus,
   type ItemRow,
 } from '@/db/schema';
+import { normalizeSearchCode } from '@/lib/search-normalization';
 import { assertAdmin, assertInventoryWorker, isAdmin, type Actor } from './actor';
 import { AUDIT_ACTIONS, writeAudit } from './audit';
 import { ITEM_CODE_PREFIX, nextInternalCode, normalizeScannedCode } from './codes';
@@ -610,13 +611,25 @@ export function searchItems(
   query: string,
   options: { includeInactive?: boolean; limit?: number } = {},
 ): ItemRow[] {
-  const term = `%${query.trim()}%`;
+  const rawQuery = query.trim();
+  const term = `%${rawQuery.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
+  const normalized = normalizeSearchCode(rawQuery);
   const statusCondition = options.includeInactive ? undefined : eq(items.status, 'active');
-  const match = or(
-    like(items.name, term),
-    like(items.internalCode, term),
-    like(items.referenceNumber, term),
+  const originalMatch = or(
+    sql`${items.name} like ${term} escape '\\'`,
+    sql`${items.internalCode} like ${term} escape '\\'`,
+    sql`${items.referenceNumber} like ${term} escape '\\'`,
+    sql`${items.barcodeValue} like ${term} escape '\\'`,
   );
+  const match = normalized
+    ? or(
+        originalMatch,
+        sql`normalize_code(${items.name}) like ${`%${normalized}%`}`,
+        sql`normalize_code(${items.internalCode}) like ${`%${normalized}%`}`,
+        sql`normalize_code(${items.referenceNumber}) like ${`%${normalized}%`}`,
+        sql`normalize_code(${items.barcodeValue}) like ${`%${normalized}%`}`,
+      )
+    : originalMatch;
 
   return tx
     .select()
@@ -666,11 +679,22 @@ export function listItems(tx: DbLike, filters: ItemListFilters = {}): ItemRow[] 
     // Экранирование служебных символов LIKE: без него «100%» или «a_b»
     // молча превратились бы в шаблон и дали неверную выборку.
     const term = `%${query.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
-    const match = or(
+    const originalMatch = or(
       sql`${items.name} like ${term} escape '\\'`,
       sql`${items.internalCode} like ${term} escape '\\'`,
       sql`${items.referenceNumber} like ${term} escape '\\'`,
+      sql`${items.barcodeValue} like ${term} escape '\\'`,
     );
+    const normalized = normalizeSearchCode(query);
+    const match = normalized
+      ? or(
+          originalMatch,
+          sql`normalize_code(${items.name}) like ${`%${normalized}%`}`,
+          sql`normalize_code(${items.internalCode}) like ${`%${normalized}%`}`,
+          sql`normalize_code(${items.referenceNumber}) like ${`%${normalized}%`}`,
+          sql`normalize_code(${items.barcodeValue}) like ${`%${normalized}%`}`,
+        )
+      : originalMatch;
     if (match) conditions.push(match);
   }
 

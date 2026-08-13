@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import {
   addItemToOperationAction,
   changeLineQuantityAction,
+  deleteVoidedOperationAction,
   finishOperationAction,
   getOperationState,
   listOperationsForActor,
@@ -20,7 +21,7 @@ import {
   undoLastScanAction,
   voidOperationAction,
 } from '@/actions/operations';
-import { operations } from '@/db/schema';
+import { auditLog, inventoryMovements, operationEvents, operationItems, operations } from '@/db/schema';
 import { getItem, updateItem } from '@/domain/items';
 import { findStockInvariantMismatches, listMovementsForOperation } from '@/domain/movements';
 import { FIXTURES, makeBasicPack, makeDoctor, makeItem, nextClientEventId, setNegativeStockMode, setupTestDb, type TestContext } from './helpers';
@@ -705,5 +706,67 @@ describe('Ручной поиск и видимость стоимости', () 
 
     const adminState = getOperationState(ctx.db, ctx.admin, operation.operationId)!;
     expect(adminState.lines[0]?.unitCostFormatted).toBe('$3.00');
+  });
+});
+
+describe('Окончательное удаление Voided operation', () => {
+  it('доступно только Admin, удаляет историю без повторного изменения остатка', () => {
+    const ctx = setupTestDb();
+    const item = makeItem(ctx, FIXTURES.gauze);
+    const operation = startOperation(ctx, ctx.admin);
+    expectSuccess(
+      addItemToOperationAction(ctx.db, ctx.admin, {
+        operationId: operation.operationId,
+        itemId: item.id,
+        clientEventId: nextClientEventId('delete-operation'),
+      }),
+    );
+    expectSuccess(voidOperationAction(ctx.db, ctx.admin, operation.operationId, 'test cleanup'));
+    const stockAfterVoid = stockOf(ctx, item.id);
+
+    const forbidden = expectFailure(
+      deleteVoidedOperationAction(ctx.db, ctx.staff, operation.operationId),
+    );
+    expect(forbidden.code).toBe('FORBIDDEN');
+    expect(getOperationState(ctx.db, ctx.admin, operation.operationId)).toBeDefined();
+
+    const deleted = expectSuccess<{ caseCode: string; deletedMovements: number }>(
+      deleteVoidedOperationAction(ctx.db, ctx.admin, operation.operationId),
+    ).data;
+    expect(deleted.caseCode).toBe(operation.caseCode);
+    expect(deleted.deletedMovements).toBeGreaterThan(0);
+    expect(stockOf(ctx, item.id)).toBe(stockAfterVoid);
+    expect(getOperationState(ctx.db, ctx.admin, operation.operationId)).toBeUndefined();
+
+    for (const rows of [
+      ctx.db.select().from(operationItems).all(),
+      ctx.db.select().from(operationEvents).all(),
+      ctx.db.select().from(inventoryMovements).all(),
+    ]) {
+      expect(rows.filter((row) => row.operationId === operation.operationId)).toEqual([]);
+    }
+    expect(
+      ctx.db.select().from(auditLog).all().some(
+        (row) =>
+          row.action === 'operation.deleted' &&
+          row.entityId === operation.operationId &&
+          row.summary?.includes(operation.caseCode),
+      ),
+    ).toBe(true);
+    expectStockInvariant(ctx);
+  });
+
+  it('не удаляет Active или Finished operation', () => {
+    const ctx = setupTestDb();
+    const operation = startOperation(ctx, ctx.admin);
+
+    expect(expectFailure(
+      deleteVoidedOperationAction(ctx.db, ctx.admin, operation.operationId),
+    ).code).toBe('OPERATION_NOT_VOIDED');
+    expectSuccess(finishOperationAction(ctx.db, ctx.admin, operation.operationId));
+    expect(expectFailure(
+      deleteVoidedOperationAction(ctx.db, ctx.admin, operation.operationId),
+    ).code).toBe('OPERATION_NOT_VOIDED');
+    expect(getOperationState(ctx.db, ctx.admin, operation.operationId)?.status).toBe('Finished');
   });
 });

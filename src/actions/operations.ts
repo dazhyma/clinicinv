@@ -37,6 +37,7 @@ import {
   addItemToOperation,
   addPackToOperation,
   calculateOperationTotalCents,
+  deleteVoidedOperation,
   displayCaseCode,
   finishOperation,
   getOperation,
@@ -51,6 +52,7 @@ import {
   undoLastScan,
   voidOperation,
   type OperationWarning,
+  type DeleteVoidedOperationResult,
 } from '@/domain/operations';
 import { getPackComposition, listPacks } from '@/domain/packs';
 import { getBooleanSetting, SETTING_KEYS } from '@/domain/settings';
@@ -126,6 +128,8 @@ export interface OperationStateView {
   totalCostFormatted?: string;
   /** §9.3: Void доступен Admin для Active и Finished. */
   canVoid: boolean;
+  /** Окончательно удалить можно только Voided operation и только Admin. */
+  canDelete: boolean;
   /** Изменять состав можно только у активной операции (§9.2). */
   canEdit: boolean;
 }
@@ -193,6 +197,7 @@ function toStateView(tx: DbLike, actor: Actor, operation: OperationRow): Operati
     unitCount: rows.reduce((sum, line) => sum + line.quantity, 0),
     showCost,
     canVoid: isAdmin(actor) && operation.status !== 'Voided',
+    canDelete: isAdmin(actor) && operation.status === 'Voided',
     canEdit: operation.status === 'Active',
     canChangeDoctor: isAdmin(actor) && operation.status === 'Active',
   };
@@ -236,6 +241,7 @@ export interface OperationRowView {
   itemCount: number;
   unitCount: number;
   canVoid: boolean;
+  canDelete: boolean;
   totalCostCents?: number;
   totalCostFormatted?: string;
 }
@@ -303,6 +309,7 @@ function toRowView(
     itemCount: summary.itemCount,
     unitCount: summary.unitCount,
     canVoid: options.isAdmin && operation.status !== 'Voided',
+    canDelete: options.isAdmin && operation.status === 'Voided',
   };
 
   if (!options.showCost) return view;
@@ -733,6 +740,8 @@ export interface VoidedOperation {
   returnedUnits: number;
 }
 
+export type DeletedOperation = DeleteVoidedOperationResult;
+
 /**
  * Void Operation (§9.3, §10.3, §18.19–§18.21). Только Admin.
  *
@@ -764,6 +773,16 @@ export function voidOperationAction(
       returnedUnits: returned.reduce((sum, entry) => sum + entry.quantity, 0),
     };
   });
+}
+
+/** Admin-only окончательное удаление уже аннулированной операции. */
+export function deleteVoidedOperationAction(
+  db: AppDatabase,
+  actor: Actor,
+  operationId: number,
+): ActionResult<DeletedOperation> {
+  if (!isAdmin(actor)) return forbidden('delete voided operation');
+  return runAction(() => deleteVoidedOperation(db, actor, operationId));
 }
 
 // --- Сводка для Symplast (§12.3) --------------------------------------------

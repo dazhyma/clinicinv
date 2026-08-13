@@ -21,6 +21,7 @@ export const DOMAIN_ERROR_CODES = [
   'OPERATION_NOT_ACTIVE',
   'OPERATION_ALREADY_FINISHED',
   'OPERATION_ALREADY_VOIDED',
+  'OPERATION_NOT_VOIDED',
   'OPERATION_LINE_NOT_FOUND',
   'NOTHING_TO_UNDO',
   'INVALID_QUANTITY',
@@ -106,6 +107,9 @@ export const errors = {
   /** §14.4, эталонная формулировка: «Operation was already voided». */
   operationAlreadyVoided: () =>
     new DomainError('OPERATION_ALREADY_VOIDED', 'Operation was already voided'),
+
+  operationNotVoided: () =>
+    new DomainError('OPERATION_NOT_VOIDED', 'Only voided operations can be deleted'),
 
   operationLineNotFound: () =>
     new DomainError('OPERATION_LINE_NOT_FOUND', 'Item line not found in this operation'),

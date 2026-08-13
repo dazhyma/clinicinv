@@ -5,8 +5,18 @@ import { requirePage } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import { AppHeader } from '../_components/app-header';
 import { AutoDismissAlert } from '../_components/auto-dismiss-alert';
-import { Alert, EmptyState, StatusBadge } from '../_components/ui';
+import {
+  Alert,
+  Button,
+  ButtonLink,
+  EmptyState,
+  FieldLabel,
+  Input,
+  Select,
+  StatusBadge,
+} from '../_components/ui';
 import { CreateOperationDialog } from './_components/create-operation-dialog';
+import { DeleteOperationButton } from './_components/delete-operation-dialog';
 import { formatDateTime } from './_components/format';
 import { VoidOperationButton } from './_components/void-dialog';
 
@@ -20,6 +30,7 @@ interface SearchParams {
   dateTo?: string;
   finished?: string;
   voided?: string;
+  deleted?: string;
   error?: string;
 }
 
@@ -49,10 +60,6 @@ export default async function OperationsPage({
     dateFrom: params.dateFrom ?? '',
     dateTo: params.dateTo ?? '',
   };
-  const hasFilters = Boolean(
-    query.q || query.doctorId || query.dateFrom || query.dateTo || params.status,
-  );
-
   const db = getDb();
   const result = listOperationsForActor(db, actor, query);
   // Для выбора при создании — только действующие врачи; для фильтра истории —
@@ -78,6 +85,11 @@ export default async function OperationsPage({
       {params.voided ? (
         <AutoDismissAlert tone="info">
           Operation {params.voided} was voided. All inventory deducted by it was returned.
+        </AutoDismissAlert>
+      ) : null}
+      {params.deleted ? (
+        <AutoDismissAlert tone="info">
+          Operation {params.deleted} was permanently deleted.
         </AutoDismissAlert>
       ) : null}
       {params.error ? (
@@ -143,34 +155,34 @@ export default async function OperationsPage({
         <h2 className="mb-4 text-2xl font-bold">Past Operations</h2>
 
         {/* --- §7.2: поиск и фильтры только для истории --- */}
-        <form method="get" className="mb-5 flex flex-wrap items-end gap-3">
-          <div className="min-w-52 flex-1">
-            <label htmlFor="q" className="text-base font-medium">
-              Search by case code
-            </label>
-            <input
-              id="q"
-              name="q"
-              type="search"
-              defaultValue={query.q}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 text-lg"
-            />
-          </div>
-          <div>
-            <label htmlFor="status" className="text-base font-medium">
-              Status
-            </label>
-            <select
-              id="status"
-              name="status"
-              defaultValue={query.status}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 text-lg"
-            >
-              <option value="all">All</option>
-              <option value="Finished">Finished</option>
-              {result.canSeeVoided ? <option value="Voided">Voided</option> : null}
-            </select>
-          </div>
+        <form
+          method="get"
+          className="mb-5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 sm:p-4"
+        >
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-12">
+            <div className="lg:col-span-3">
+              <FieldLabel htmlFor="q">Search by case code</FieldLabel>
+              <Input
+                id="q"
+                name="q"
+                type="search"
+                defaultValue={query.q}
+                className="mt-1 w-full"
+              />
+            </div>
+            <div className="lg:col-span-2">
+              <FieldLabel htmlFor="status">Status</FieldLabel>
+              <Select
+                id="status"
+                name="status"
+                defaultValue={query.status}
+                className="mt-1 w-full"
+              >
+                <option value="all">All</option>
+                <option value="Finished">Finished</option>
+                {result.canSeeVoided ? <option value="Voided">Voided</option> : null}
+              </Select>
+            </div>
 
           {/*
             Два фильтра истории: по врачу и по дате создания. Активные операции
@@ -178,63 +190,50 @@ export default async function OperationsPage({
             В списке врачей есть и архивные: иначе история архивированного врача
             стала бы недоступна.
           */}
-          <div>
-            <label htmlFor="doctorId" className="text-base font-medium">
-              Doctor
-            </label>
-            <select
-              id="doctorId"
-              name="doctorId"
-              defaultValue={query.doctorId}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 text-lg"
-            >
-              <option value="">All doctors</option>
-              {filterDoctors.map((doctor) => (
-                <option key={doctor.id} value={doctor.id}>
-                  {doctor.lastName} ({doctor.code}){doctor.archived ? ' · archived' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="dateFrom" className="text-base font-medium">
-              From date
-            </label>
-            <input
-              id="dateFrom"
-              name="dateFrom"
-              type="date"
-              defaultValue={query.dateFrom}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 text-lg"
-            />
-          </div>
-          <div>
-            <label htmlFor="dateTo" className="text-base font-medium">
-              To date
-            </label>
-            <input
-              id="dateTo"
-              name="dateTo"
-              type="date"
-              defaultValue={query.dateTo}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 text-lg"
-            />
+            <div className="lg:col-span-3">
+              <FieldLabel htmlFor="doctorId">Doctor</FieldLabel>
+              <Select
+                id="doctorId"
+                name="doctorId"
+                defaultValue={query.doctorId}
+                className="mt-1 w-full"
+              >
+                <option value="">All doctors</option>
+                {filterDoctors.map((doctor) => (
+                  <option key={doctor.id} value={doctor.id}>
+                    {doctor.lastName} ({doctor.code}){doctor.archived ? ' · archived' : ''}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="lg:col-span-2">
+              <FieldLabel htmlFor="dateFrom">From date</FieldLabel>
+              <Input
+                id="dateFrom"
+                name="dateFrom"
+                type="date"
+                defaultValue={query.dateFrom}
+                className="mt-1 w-full"
+              />
+            </div>
+            <div className="lg:col-span-2">
+              <FieldLabel htmlFor="dateTo">To date</FieldLabel>
+              <Input
+                id="dateTo"
+                name="dateTo"
+                type="date"
+                defaultValue={query.dateTo}
+                className="mt-1 w-full"
+              />
+            </div>
           </div>
 
-          <button
-            type="submit"
-            className="rounded-xl border border-slate-300 bg-white px-6 py-3 text-lg font-semibold"
-          >
-            Apply
-          </button>
-          {hasFilters ? (
-            <Link
-              href="/operations"
-              className="rounded-xl px-4 py-3 text-lg text-slate-600 underline underline-offset-4"
-            >
-              Reset
-            </Link>
-          ) : null}
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:flex lg:justify-end">
+            <Button type="submit">Apply Filters</Button>
+            <ButtonLink href="/operations" variant="secondary">
+              Clear Filters
+            </ButtonLink>
+          </div>
         </form>
 
         <OperationHistory
@@ -338,6 +337,13 @@ function OperationHistory({
 
               {operation.canVoid ? (
                 <VoidOperationButton operationId={operation.id} caseCode={operation.caseCode} />
+              ) : null}
+
+              {operation.canDelete ? (
+                <DeleteOperationButton
+                  operationId={operation.id}
+                  caseCode={operation.caseCode}
+                />
               ) : null}
             </li>
           ))}

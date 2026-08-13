@@ -10,6 +10,7 @@ import path from 'node:path';
 import BetterSqlite3 from 'better-sqlite3';
 import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { env } from '@/env';
+import { normalizeSearchCode } from '@/lib/search-normalization';
 import * as schema from './schema';
 
 export type AppDatabase = BetterSQLite3Database<typeof schema>;
@@ -25,6 +26,12 @@ export function openSqlite(file: string): BetterSqlite3.Database {
     mkdirSync(path.dirname(file), { recursive: true });
   }
   const sqlite = new BetterSqlite3(file);
+  // Поиск сравнивает коды без пробелов, дефисов и других разделителей, но
+  // никогда не переписывает сохранённое значение. Детерминированная SQL-функция
+  // оставляет фильтрацию внутри SQLite даже при тысячах Item.
+  sqlite.function('normalize_code', { deterministic: true }, (value: unknown) =>
+    typeof value === 'string' ? normalizeSearchCode(value) : '',
+  );
   // WAL не поддерживается для :memory: — pragma просто вернёт 'memory'.
   sqlite.pragma('journal_mode = WAL');
   sqlite.pragma('synchronous = NORMAL');

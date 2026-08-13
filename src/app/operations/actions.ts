@@ -22,6 +22,7 @@ import {
   addItemToOperationAction,
   changeLineQuantityAction,
   changeOperationDoctorAction,
+  deleteVoidedOperationAction,
   finishOperationAction,
   scanIntoOperationAction,
   searchItemsForOperationAction,
@@ -29,6 +30,7 @@ import {
   undoLastScanAction,
   voidOperationAction,
   type FinishedOperation,
+  type DeletedOperation,
   type ItemSearchResultView,
   type OperationMutationResult,
   type OperationStateView,
@@ -181,6 +183,20 @@ export async function voidOperationServerAction(input: {
   if (result.ok) {
     revalidatePath('/operations');
     revalidatePath(`/operations/${input.operationId}`);
+  }
+  return result;
+}
+
+export async function deleteVoidedOperationServerAction(
+  operationId: number,
+): Promise<ActionResult<DeletedOperation>> {
+  const auth = await actorOrFailure();
+  if ('failure' in auth) return auth.failure;
+
+  const result = deleteVoidedOperationAction(getDb(), auth.actor, operationId);
+  if (result.ok) {
+    revalidatePath('/operations');
+    revalidatePath(`/operations/${operationId}`);
   }
   return result;
 }

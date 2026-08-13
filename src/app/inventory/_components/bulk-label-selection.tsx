@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { LabelSelectionItemView } from '@/actions/item-labels';
 import { LABEL_SIZES } from '@/domain/label-sizes';
+import { normalizeSearchCode } from '@/lib/search-normalization';
 import {
   MAX_BULK_LABELS,
   MAX_COPIES_PER_ITEM,
@@ -49,11 +50,14 @@ export function BulkLabelSelection({
 
   const filtered = useMemo(() => {
     const query = state.filters.query.trim().toLocaleLowerCase();
+    const normalizedQuery = normalizeSearchCode(state.filters.query);
     return items.filter((item) => {
       if (
         query &&
-        ![item.name, item.internalCode, item.referenceNumber].some((value) =>
-          value?.toLocaleLowerCase().includes(query),
+        ![item.name, item.internalCode, item.referenceNumber].some(
+          (value) =>
+            value?.toLocaleLowerCase().includes(query) ||
+            (normalizedQuery && normalizeSearchCode(value ?? '').includes(normalizedQuery)),
         )
       ) {
         return false;

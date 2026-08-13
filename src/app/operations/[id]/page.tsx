@@ -12,6 +12,7 @@ import { requirePage } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import { AppHeader } from '../../_components/app-header';
 import { CopySummaryButton } from '../_components/copy-summary';
+import { DeleteOperationButton } from '../_components/delete-operation-dialog';
 import { OperationDoctorBar } from '../_components/doctor-bar';
 import { formatDateTime } from '../_components/format';
 import { OperationScreen } from '../_components/operation-screen';
@@ -118,6 +119,17 @@ export default async function OperationPage({ params }: { params: Promise<{ id: 
               caseCode={state.caseCode}
               redirectTo={`/operations?voided=${encodeURIComponent(state.caseCode)}`}
               variant="block"
+            />
+          </section>
+        ) : null}
+
+        {state.canDelete ? (
+          <section className="mt-4 rounded-2xl border border-red-200 bg-white p-4">
+            <DeleteOperationButton
+              operationId={state.id}
+              caseCode={state.caseCode}
+              redirectTo={`/operations?deleted=${encodeURIComponent(state.caseCode)}`}
+              fullWidth
             />
           </section>
         ) : null}

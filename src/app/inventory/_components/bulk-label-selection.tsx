@@ -10,6 +10,7 @@ import {
   MAX_COPIES_PER_ITEM,
 } from '@/domain/label-sheet';
 import { ItemPhoto } from '../../_components/item-photo';
+import { Select } from '../../_components/ui';
 import {
   EMPTY_BULK_LABEL_STATE,
   readBulkLabelState,
@@ -151,15 +152,15 @@ export function BulkLabelSelection({
           />
           <label>
             <span className="mb-1 block text-sm text-slate-600">Availability</span>
-            <select
+            <Select
               value={state.filters.availability}
               onChange={(event) => setFilter('availability', event.target.value)}
-              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3"
+              className="w-full"
             >
               <option value="all">Any stock level</option>
               <option value="in_stock">In stock</option>
               <option value="out_of_stock">Out of stock</option>
-            </select>
+            </Select>
           </label>
           <label className="flex min-h-12 items-center gap-3 self-end">
             <input
@@ -244,19 +245,19 @@ export function BulkLabelSelection({
           </label>
           <label>
             <span className="mb-1 block font-semibold">Label Size</span>
-            <select
+            <Select
               value={state.sizeId}
               onChange={(event) =>
                 setState((current) => ({ ...current, sizeId: event.target.value }))
               }
-              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-lg"
+              className="w-full"
             >
               {LABEL_SIZES.map((size) => (
                 <option key={size.id} value={size.id}>
                   {size.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           <div className="flex flex-col justify-end">
             <button
@@ -390,10 +391,10 @@ function FilterSelect({
   return (
     <label>
       <span className="mb-1 block text-sm text-slate-600">{label}</span>
-      <select
+      <Select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3"
+        className="w-full"
       >
         <option value="">{allLabel}</option>
         {options.map((option) => (
@@ -401,7 +402,7 @@ function FilterSelect({
             {option}
           </option>
         ))}
-      </select>
+      </Select>
     </label>
   );
 }

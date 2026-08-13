@@ -8,6 +8,7 @@ import { useUnsavedChanges } from '../../_components/use-unsaved-changes';
 import type { FormState } from '../actions';
 import { ErrorBanner, Field, SubmitButton } from './form-field';
 import { ItemPhoto } from '../../_components/item-photo';
+import { Select } from '../../_components/ui';
 
 const initialState: FormState = {};
 
@@ -235,10 +236,10 @@ export function ItemForm({
         {mode === 'edit' ? (
           <Field name="status" label="Status" error={fieldErrors.status}>
             {(props) => (
-              <select defaultValue={item?.status ?? 'active'} {...props}>
+              <Select defaultValue={item?.status ?? 'active'} {...props}>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
-              </select>
+              </Select>
             )}
           </Field>
         ) : null}

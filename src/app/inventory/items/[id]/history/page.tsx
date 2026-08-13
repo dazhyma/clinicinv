@@ -8,6 +8,7 @@ import { requirePageAdmin } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import { formatCents } from '@/domain/money';
 import { AppHeader } from '../../../../_components/app-header';
+import { Button, Select } from '../../../../_components/ui';
 import { formatDateTime } from '../../../../operations/_components/format';
 import { itemsReturnPath } from '../../../_components/items-return-path';
 
@@ -47,25 +48,22 @@ export default async function ItemHistoryPage({
           <label htmlFor="category" className="text-base font-medium">
             History category
           </label>
-          <select
+          <Select
             id="category"
             name="category"
             defaultValue={result.filter}
-            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-3 text-lg"
+            className="mt-1 w-full"
           >
             {ITEM_HISTORY_FILTERS.map((filter) => (
               <option key={filter.value} value={filter.value}>
                 {filter.label}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
-        <button
-          type="submit"
-          className="rounded-xl bg-slate-900 px-6 py-3 text-lg font-semibold text-white"
-        >
+        <Button type="submit" size="large">
           Apply
-        </button>
+        </Button>
       </form>
 
       {result.entries.length === 0 ? (

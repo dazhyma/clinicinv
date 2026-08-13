@@ -1267,3 +1267,17 @@ Search, Status, Doctor и обе даты собраны в одну адапт�
 колонку. `Apply Filters` использует primary-вариант, а `Clear Filters` —
 secondary-ссылку на чистый `/operations`, поэтому очистка сразу возвращает
 полную историю без отдельного клиентского состояния.
+
+## D-71. Существующие dropdown используют единый доступный listbox
+
+Все существующие нативные `select` переведены на общий `Select`: визуальный
+trigger и открытый listbox одинаковы в Safari, Chrome, iPadOS и Android, а
+скрытый нативный `select` сохраняет `name`, текущее значение, Server Actions,
+GET-фильтры и сброс формы. Меню рендерится через portal поверх карточек,
+ограничивается viewport и при нехватке места открывается вверх; доступны
+стрелки, Home/End, Enter, Escape, typeahead и touchscreen.
+
+По уточнению заказчика новые dropdown не создаются: существующие текстовые поля
+с `datalist` для category, unit и storage location остаются текстовыми полями.
+Строка действий фильтров вынесена в общий `FilterActions`; primary Apply и
+secondary Clear используют уже существующую общую систему кнопок.

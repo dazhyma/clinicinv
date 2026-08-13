@@ -4,7 +4,7 @@ import { useActionState, useState } from 'react';
 import type { AccountOptionView } from '@/actions/accounts';
 import { MIN_PASSWORD_LENGTH } from '@/auth/password-rules';
 import { PasswordInput } from '../../_components/password-input';
-import { Alert } from '../../_components/ui';
+import { Alert, Select } from '../../_components/ui';
 import { ErrorBanner, Field, SubmitButton, SuccessBanner } from '../../inventory/_components/form-field';
 import { changePasswordFormAction, type PasswordFormState } from './actions';
 
@@ -55,7 +55,7 @@ export function PasswordForm({
       >
         {({ name, ...props }) => (
           <>
-            <select
+            <Select
               {...props}
               value={selectedAccountId}
               onChange={(event) => setSelectedAccountId(event.currentTarget.value)}
@@ -65,7 +65,7 @@ export function PasswordForm({
                   {account.username} · {account.role}
                 </option>
               ))}
-            </select>
+            </Select>
             <input type="hidden" name={name} value={selectedAccountId} />
             <input
               type="hidden"

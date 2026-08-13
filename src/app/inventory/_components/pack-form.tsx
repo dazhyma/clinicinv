@@ -10,6 +10,7 @@ import { useUnsavedChanges } from '../../_components/use-unsaved-changes';
 import type { FormState } from '../actions';
 import { ErrorBanner, Field, SubmitButton } from './form-field';
 import { ItemPhoto } from '../../_components/item-photo';
+import { Select } from '../../_components/ui';
 
 const initialState: FormState = {};
 
@@ -177,16 +178,14 @@ export function PackForm({
                   <label htmlFor={`component-${index}-itemId`} className="text-sm text-slate-600">
                     Item
                   </label>
-                  <select
+                  <Select
                     id={`component-${index}-itemId`}
                     name="componentItemId"
                     value={row.itemId}
                     onChange={(event) => updateRow(row.key, { itemId: event.target.value })}
                     aria-invalid={itemError ? true : undefined}
                     aria-describedby={itemError ? `component-${index}-itemId-error` : undefined}
-                    className={`w-full rounded-lg border px-3 py-3 text-lg ${
-                      itemError ? 'border-red-500 bg-red-50' : 'border-slate-300'
-                    }`}
+                    className="w-full"
                   >
                     <option value="">— select an item —</option>
                     {items.map((item) => (
@@ -194,7 +193,7 @@ export function PackForm({
                         {item.name} · {item.internalCode}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                   {itemError ? (
                     <p
                       id={`component-${index}-itemId-error`}
@@ -284,10 +283,10 @@ export function PackForm({
       {mode === 'edit' ? (
         <Field name="status" label="Status" error={fieldErrors.status}>
           {(props) => (
-            <select defaultValue={pack?.status ?? 'active'} {...props}>
+            <Select defaultValue={pack?.status ?? 'active'} {...props}>
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
-            </select>
+            </Select>
           )}
         </Field>
       ) : null}

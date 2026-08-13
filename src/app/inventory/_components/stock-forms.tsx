@@ -8,6 +8,7 @@ import type { FormState } from '../actions';
 import { newClientEventId } from '../../_components/client-event-id';
 import { useUnsavedChanges } from '../../_components/use-unsaved-changes';
 import { ErrorBanner, Field, SubmitButton, SuccessBanner } from './form-field';
+import { Select } from '../../_components/ui';
 
 const initialState: FormState = {};
 
@@ -181,7 +182,7 @@ export function AdjustStockForm({
       {/* §5.9: причина обязательна и выбирается из фиксированного списка. */}
       <Field name="reason" label="Reason" required error={fieldErrors.reason}>
         {(props) => (
-          <select defaultValue="" {...props}>
+          <Select defaultValue="" {...props}>
             <option value="" disabled>
               Select a reason…
             </option>
@@ -190,7 +191,7 @@ export function AdjustStockForm({
                 {reason}
               </option>
             ))}
-          </select>
+          </Select>
         )}
       </Field>
 

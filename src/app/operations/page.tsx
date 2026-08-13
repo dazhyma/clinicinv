@@ -11,6 +11,7 @@ import {
   ButtonLink,
   EmptyState,
   FieldLabel,
+  FilterActions,
   Input,
   Select,
   StatusBadge,
@@ -228,12 +229,12 @@ export default async function OperationsPage({
             </div>
           </div>
 
-          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:flex lg:justify-end">
+          <FilterActions>
             <Button type="submit">Apply Filters</Button>
             <ButtonLink href="/operations" variant="secondary">
               Clear Filters
             </ButtonLink>
-          </div>
+          </FilterActions>
         </form>
 
         <OperationHistory

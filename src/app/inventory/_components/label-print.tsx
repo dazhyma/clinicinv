@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { withBasePath } from '@/base-path';
 import { ArrowLeftIcon, PrinterIcon } from '../../_components/icons';
-import { buttonClassName } from '../../_components/ui';
+import { Select, buttonClassName } from '../../_components/ui';
 import {
   LABEL_SIZES,
   MAX_LABEL_COPIES,
@@ -109,19 +109,19 @@ export function LabelPrintView({
             <label htmlFor="labelSize" className="text-base font-medium">
               Label size
             </label>
-            <select
+            <Select
               id="labelSize"
               name="labelSize"
               value={sizeId}
               onChange={(event) => setSizeId(event.target.value)}
-              className="w-full rounded-lg border border-slate-300 px-3 py-3 text-lg"
+              className="w-full"
             >
               {LABEL_SIZES.map((option) => (
                 <option key={option.id} value={option.id}>
                   {option.label}
                 </option>
               ))}
-            </select>
+            </Select>
             <p className="text-sm text-slate-500">
               Labels are laid out on the sheet, so a plain sheet works too.
             </p>

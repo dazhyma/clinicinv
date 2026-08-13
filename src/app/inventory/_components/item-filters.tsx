@@ -2,6 +2,7 @@
 
 import { useRef } from 'react';
 import { withBasePath } from '@/base-path';
+import { Select } from '../../_components/ui';
 
 /**
  * Поиск и фильтры списка предметов (§5.3).
@@ -33,9 +34,6 @@ export function ItemFilters({
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const submit = () => formRef.current?.requestSubmit();
-
-  const selectClass =
-    'min-h-12 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base';
 
   return (
     // Обычная GET-форма: атрибут action отправляет браузер, Next префикс сюда
@@ -73,12 +71,12 @@ export function ItemFilters({
           <label htmlFor="category" className="mb-1 block text-sm text-slate-600">
             Category
           </label>
-          <select
+          <Select
             id="category"
             name="category"
             defaultValue={values.category}
             onChange={submit}
-            className={selectClass}
+            className="w-full"
           >
             <option value="">All categories</option>
             {categories.map((value) => (
@@ -86,19 +84,19 @@ export function ItemFilters({
                 {value}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div>
           <label htmlFor="location" className="mb-1 block text-sm text-slate-600">
             Storage location
           </label>
-          <select
+          <Select
             id="location"
             name="location"
             defaultValue={values.location}
             onChange={submit}
-            className={selectClass}
+            className="w-full"
           >
             <option value="">All locations</option>
             {storageLocations.map((value) => (
@@ -106,24 +104,24 @@ export function ItemFilters({
                 {value}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div>
           <label htmlFor="availability" className="mb-1 block text-sm text-slate-600">
             Availability
           </label>
-          <select
+          <Select
             id="availability"
             name="availability"
             defaultValue={values.availability}
             onChange={submit}
-            className={selectClass}
+            className="w-full"
           >
             <option value="all">Any stock level</option>
             <option value="in_stock">In stock</option>
             <option value="out_of_stock">Out of stock</option>
-          </select>
+          </Select>
         </div>
       </div>
 

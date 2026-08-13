@@ -1,7 +1,8 @@
 import Link from 'next/link';
-import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react';
+import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, ReactNode } from 'react';
 
 import { AlertIcon, CheckIcon, InfoIcon } from './icons';
+export { Select } from './select';
 
 type ButtonVariant = 'primary' | 'secondary' | 'soft' | 'danger';
 type ButtonSize = 'standard' | 'compact' | 'large';
@@ -63,12 +64,12 @@ export function Input({ className = '', ...props }: InputHTMLAttributes<HTMLInpu
   return <input className={`ui-field ${className}`} {...props} />;
 }
 
-export function Select({ className = '', ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={`ui-field ${className}`} {...props} />;
-}
-
 export function FieldLabel({ className = '', ...props }: React.LabelHTMLAttributes<HTMLLabelElement>) {
   return <label className={`ui-label ${className}`} {...props} />;
+}
+
+export function FilterActions({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return <div className={`ui-filter-actions ${className}`}>{children}</div>;
 }
 
 export function Checkbox({ className = '', ...props }: InputHTMLAttributes<HTMLInputElement>) {
@@ -98,4 +99,3 @@ export function EmptyState({ title, description, action, className = '' }: { tit
 export function LoadingState({ label = 'Loading…' }: { label?: string }) {
   return <div className="ui-empty-state" role="status"><span className="h-7 w-7 animate-spin rounded-full border-2 border-slate-300 border-t-[var(--color-primary)]" aria-hidden="true" /><span>{label}</span></div>;
 }
-

@@ -376,6 +376,135 @@ input[type='radio'] {
   font-size: 1rem;
 }
 
+.ui-select {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+  min-width: 0;
+}
+
+/* Field добавляет базовый класс для нативного control. У составного dropdown
+   рамка принадлежит trigger, поэтому оболочка остаётся только layout-контейнером. */
+.ui-select.ui-field {
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.ui-select-native {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ui-select-trigger {
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  align-items: center;
+  gap: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  padding: 0.7rem 0.75rem 0.7rem 0.9rem;
+  background: var(--color-surface-raised);
+  color: var(--color-text-primary);
+  box-shadow: 0 1px 2px rgb(48 50 50 / 0.025);
+  font: inherit;
+  text-align: left;
+}
+
+.ui-select-trigger:hover:not(:disabled) {
+  border-color: var(--color-border-strong);
+}
+
+.ui-select-trigger:focus,
+.ui-select[data-open] .ui-select-trigger {
+  border-color: var(--color-focus);
+  box-shadow: 0 0 0 3px rgb(101 121 117 / 0.15);
+  outline: none;
+}
+
+.ui-select-trigger[aria-invalid='true'] {
+  border-color: var(--color-danger);
+  background: var(--color-danger-soft);
+}
+
+.ui-select-trigger:disabled {
+  background: var(--color-surface-muted);
+  color: var(--color-text-disabled);
+  cursor: not-allowed;
+}
+
+.ui-select-chevron {
+  color: var(--color-text-secondary);
+  transition: transform var(--transition-fast) var(--ease-standard);
+}
+
+.ui-select[data-open] .ui-select-chevron {
+  transform: rotate(180deg);
+}
+
+.ui-select-menu {
+  z-index: 10000;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  padding: 0.35rem;
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-raised);
+}
+
+.ui-select-option {
+  display: flex;
+  min-height: 46px;
+  align-items: center;
+  gap: 0.75rem;
+  border-radius: calc(var(--radius-control) - 4px);
+  padding: 0.65rem 0.75rem;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.ui-select-option[data-active] {
+  background: var(--color-primary-soft);
+  color: var(--color-primary-active);
+}
+
+.ui-select-option[aria-selected='true'] {
+  font-weight: 650;
+}
+
+.ui-select-option[data-disabled] {
+  color: var(--color-text-disabled);
+  cursor: not-allowed;
+}
+
+.ui-filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+}
+
+.ui-filter-actions .ui-button {
+  min-height: 42px;
+  padding: 0.55rem 1rem;
+}
+
 .ui-label {
   display: block;
   margin-bottom: 0.35rem;
@@ -534,6 +663,15 @@ input[type='radio'] {
 @media screen and (max-width: 639px) {
   .ui-button {
     max-width: 100%;
+  }
+
+  .ui-filter-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .ui-filter-actions .ui-button {
+    width: 100%;
   }
 
   table.responsive-table,

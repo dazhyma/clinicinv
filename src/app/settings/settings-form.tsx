@@ -4,6 +4,7 @@ import { useActionState, type ReactNode } from 'react';
 import type { SettingsView } from '@/actions/settings';
 import type { FormState } from '../inventory/actions';
 import { ErrorBanner, SubmitButton, SuccessBanner } from '../inventory/_components/form-field';
+import { Select } from '../_components/ui';
 import { updateSettingsFormAction } from './actions';
 
 const initialState: FormState = {};
@@ -41,15 +42,15 @@ export function SettingsForm({ settings }: { settings: SettingsView }) {
           <p className="text-sm text-slate-600">
             Choose whether to warn or block when an operation would create negative stock.
           </p>
-          <select
+          <Select
             id="negativeStockMode"
             name="negativeStockMode"
             defaultValue={settings.negativeStockMode}
-            className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-lg"
+            className="mt-2 w-full"
           >
             <option value="warn">Allow with a clear warning (recommended)</option>
             <option value="block">Block when stock is insufficient</option>
-          </select>
+          </Select>
           {fieldErrors.negativeStockMode ? (
             <p className="text-sm text-red-700">{fieldErrors.negativeStockMode}</p>
           ) : null}

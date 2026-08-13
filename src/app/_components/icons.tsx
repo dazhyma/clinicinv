@@ -87,6 +87,10 @@ export function ChevronRightIcon(props: IconProps) {
   return <IconBase {...props}><path d="m9 18 6-6-6-6" /></IconBase>;
 }
 
+export function ChevronDownIcon(props: IconProps) {
+  return <IconBase {...props}><path d="m6 9 6 6 6-6" /></IconBase>;
+}
+
 export function EyeIcon(props: IconProps) {
   return <IconBase {...props}><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.75" /></IconBase>;
 }

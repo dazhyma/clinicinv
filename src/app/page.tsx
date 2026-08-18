@@ -41,9 +41,9 @@ export default async function HomePage() {
           className="app-card app-card-interactive group flex min-h-52 flex-col justify-between bg-[var(--color-surface-blue)] p-6 sm:p-7"
         >
           <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-white/70 text-blue-800"><ClipboardIcon size={27} /></span>
-          <span className="mt-7 text-3xl font-bold">Operations</span>
-          <span className="mt-2 text-base text-slate-600">Start scanning or review operations</span>
-          <span className="mt-5 inline-flex items-center gap-1.5 font-semibold text-blue-800">Open Operations <ChevronRightIcon className="transition-transform group-hover:translate-x-1" size={19} /></span>
+          <span className="mt-7 text-3xl font-bold">Surgeries</span>
+          <span className="mt-2 text-base text-slate-600">Start scanning or review surgeries</span>
+          <span className="mt-5 inline-flex items-center gap-1.5 font-semibold text-blue-800">Open Surgeries <ChevronRightIcon className="transition-transform group-hover:translate-x-1" size={19} /></span>
         </Link>
       </div>
 

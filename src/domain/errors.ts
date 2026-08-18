@@ -40,6 +40,7 @@ export const DOMAIN_ERROR_CODES = [
   'DOCTOR_REQUIRED',
   'DOCTOR_HAS_ACTIVE_OPERATION',
   'OPERATING_ROOMS_BUSY',
+  'INVALID_PATIENT_ID',
 ] as const;
 
 export type DomainErrorCode = (typeof DOMAIN_ERROR_CODES)[number];
@@ -96,23 +97,23 @@ export const errors = {
     ),
 
   operationNotFound: (operationId?: number) =>
-    new DomainError('OPERATION_NOT_FOUND', 'Operation not found', { operationId }),
+    new DomainError('OPERATION_NOT_FOUND', 'Surgery not found', { operationId }),
 
   operationNotActive: (status?: string) =>
-    new DomainError('OPERATION_NOT_ACTIVE', 'Operation is not active', { status }),
+    new DomainError('OPERATION_NOT_ACTIVE', 'Surgery is not active', { status }),
 
   operationAlreadyFinished: () =>
-    new DomainError('OPERATION_ALREADY_FINISHED', 'Operation was already finished'),
+    new DomainError('OPERATION_ALREADY_FINISHED', 'Surgery was already finished'),
 
   /** §14.4, эталонная формулировка: «Operation was already voided». */
   operationAlreadyVoided: () =>
-    new DomainError('OPERATION_ALREADY_VOIDED', 'Operation was already voided'),
+    new DomainError('OPERATION_ALREADY_VOIDED', 'Surgery was already voided'),
 
   operationNotVoided: () =>
-    new DomainError('OPERATION_NOT_VOIDED', 'Only voided operations can be deleted'),
+    new DomainError('OPERATION_NOT_VOIDED', 'Only voided surgeries can be deleted'),
 
   operationLineNotFound: () =>
-    new DomainError('OPERATION_LINE_NOT_FOUND', 'Item line not found in this operation'),
+    new DomainError('OPERATION_LINE_NOT_FOUND', 'Item line not found in this surgery'),
 
   nothingToUndo: () => new DomainError('NOTHING_TO_UNDO', 'Nothing to undo'),
 
@@ -169,7 +170,7 @@ export const errors = {
 
   /** Без врача код операции построить не из чего — операция не создаётся. */
   doctorRequired: () =>
-    new DomainError('DOCTOR_REQUIRED', 'Select a doctor to start an operation', {
+    new DomainError('DOCTOR_REQUIRED', 'Select a doctor to start a surgery', {
       field: 'doctorId',
     }),
 
@@ -180,14 +181,24 @@ export const errors = {
   doctorHasActiveOperation: (lastName: string, caseCode: string) =>
     new DomainError(
       'DOCTOR_HAS_ACTIVE_OPERATION',
-      `${lastName} already has an active operation (${caseCode}). Finish it before starting another.`,
+      `${lastName} already has an active surgery (${caseCode}). Finish it before starting another.`,
       { lastName, caseCode, field: 'doctorId' },
     ),
 
   operatingRoomsBusy: (rooms: number) =>
     new DomainError(
       'OPERATING_ROOMS_BUSY',
-      `All ${rooms} operating rooms are in use. Finish an operation before starting another.`,
+      `All ${rooms} operating rooms are in use. Finish a surgery before starting another.`,
       { rooms },
     ),
+
+  patientIdRequired: () =>
+    new DomainError('INVALID_PATIENT_ID', 'Patient ID is required.', {
+      field: 'patientId',
+    }),
+
+  invalidPatientId: () =>
+    new DomainError('INVALID_PATIENT_ID', 'Patient ID must contain digits only.', {
+      field: 'patientId',
+    }),
 };

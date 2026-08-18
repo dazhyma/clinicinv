@@ -139,7 +139,7 @@ describe('Staff не получает полный Admin-доступ', () => {
 
   it('Void операции отклоняется', () => {
     const ctx = setupTestDb();
-    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
     expect(() => voidOperation(ctx.db, ctx.staff, operation.id)).toThrow(/permission/i);
   });
 });
@@ -149,7 +149,7 @@ describe('Staff может выполнять свои действия (§3.2)'
     const ctx = setupTestDb();
     const item = makeItem(ctx, FIXTURES.gauze);
 
-    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
     addItemToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
       itemId: item.id,

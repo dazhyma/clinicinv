@@ -39,7 +39,7 @@ export function DeleteOperationButton({
       if (redirectTo) router.push(redirectTo);
       else router.refresh();
     } catch {
-      setError('The operation was not deleted — check connection and try again');
+      setError('The surgery was not deleted — check connection and try again');
     } finally {
       setBusy(false);
     }
@@ -53,7 +53,7 @@ export function DeleteOperationButton({
         fullWidth={fullWidth}
         onClick={() => setOpen(true)}
       >
-        Delete Operation
+        Delete Surgery
       </Button>
 
       {open ? (
@@ -70,10 +70,10 @@ export function DeleteOperationButton({
             className="modal-panel app-card w-full max-w-lg p-6 shadow-[var(--shadow-raised)]"
           >
             <h2 id={`delete-operation-${operationId}`} className="text-2xl font-bold">
-              Delete voided operation?
+              Delete voided surgery?
             </h2>
             <p className="mt-3 text-slate-700">
-              Operation {caseCode} will be permanently deleted. This action cannot be undone.
+              Surgery {caseCode} will be permanently deleted. This action cannot be undone.
             </p>
 
             {error ? <Alert tone="danger" className="mt-4">{error}</Alert> : null}
@@ -88,7 +88,7 @@ export function DeleteOperationButton({
                 Cancel
               </Button>
               <Button variant="danger" type="button" disabled={busy} onClick={confirm}>
-                {busy ? 'Deleting…' : 'Delete Operation'}
+                {busy ? 'Deleting…' : 'Delete Surgery'}
               </Button>
             </div>
           </section>

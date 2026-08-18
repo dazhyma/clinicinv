@@ -235,10 +235,8 @@ describe('CHECK-констрейнты держат инварианты дви�
   });
 });
 
-describe('Приватность схемы (§2.4, §18.3, AC-9.5)', () => {
+describe('Приватность схемы Patient ID', () => {
   const FORBIDDEN = [
-    'patient',
-    'patient_id',
     'symplast',
     'first_name',
     'last_name',
@@ -251,7 +249,7 @@ describe('Приватность схемы (§2.4, §18.3, AC-9.5)', () => {
     'ssn',
   ];
 
-  it('ни в одной таблице нет столбцов, идентифицирующих пациента', () => {
+  it('кроме зашифрованного Patient ID не добавляет другие данные пациента', () => {
     const ctx = setupTestDb();
     const tables = (
       ctx.sqlite
@@ -260,9 +258,6 @@ describe('Приватность схемы (§2.4, §18.3, AC-9.5)', () => {
     ).map((t) => t.name);
 
     for (const table of tables) {
-      // `doctors` — справочник СОТРУДНИКОВ, а не пациентов: §2.4 и §18.3
-      // запрещают хранить пациента, врача они не касаются. Исключение адресное,
-      // именно поэтому оно названо таблицей, а не отключением проверки.
       if (table === 'doctors') continue;
 
       const columns = (
@@ -279,7 +274,7 @@ describe('Приватность схемы (§2.4, §18.3, AC-9.5)', () => {
     }
   });
 
-  it('нет таблицы сопоставления операции с пациентом (§7.3)', () => {
+  it('нет отдельной таблицы пациентов и plaintext-столбца Patient ID', () => {
     const ctx = setupTestDb();
     const tables = (
       ctx.sqlite
@@ -288,6 +283,12 @@ describe('Приватность схемы (§2.4, §18.3, AC-9.5)', () => {
     ).map((t) => t.name.toLowerCase());
 
     expect(tables.some((t) => t.includes('patient'))).toBe(false);
+    const columns = (
+      ctx.sqlite.prepare(`PRAGMA table_info(operations)`).all() as { name: string }[]
+    ).map((column) => column.name);
+    expect(columns).toContain('patient_id_encrypted');
+    expect(columns).toContain('patient_id_lookup');
+    expect(columns).not.toContain('patient_id');
   });
 });
 

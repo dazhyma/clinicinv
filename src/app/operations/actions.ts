@@ -25,6 +25,7 @@ import {
   deleteVoidedOperationAction,
   finishOperationAction,
   scanIntoOperationAction,
+  searchPastSurgeriesByPatientIdAction,
   searchItemsForOperationAction,
   startOperationAction,
   undoLastScanAction,
@@ -34,6 +35,7 @@ import {
   type ItemSearchResultView,
   type OperationMutationResult,
   type OperationStateView,
+  type OperationListResult,
   type VoidedOperation,
 } from '@/actions/operations';
 import { toFailure, type ActionFailure, type ActionResult } from '@/actions/result';
@@ -55,19 +57,59 @@ async function actorOrFailure(): Promise<{ actor: Actor } | { failure: ActionFai
  * Создаёт операцию и открывает экран сканирования (§7.3, шаги 4–5).
  * Существующие активные операции не затрагиваются (§8.5, §18.24).
  */
-export async function startOperationFormAction(formData: FormData): Promise<void> {
+export interface StartSurgeryFormState {
+  error?: string;
+  fieldErrors?: Record<string, string>;
+}
+
+export async function startOperationFormAction(
+  _state: StartSurgeryFormState,
+  formData: FormData,
+): Promise<StartSurgeryFormState> {
   const auth = await actorOrFailure();
   if ('failure' in auth) redirect('/login');
 
   const result = startOperationAction(getDb(), auth.actor, {
     doctorId: String(formData.get('doctorId') ?? ''),
+    patientId: String(formData.get('patientId') ?? ''),
   });
-  // Ошибка не должна оставлять пользователя на пустом экране: конкретное
-  // сообщение возвращается в раздел Operations (§14.4).
-  if (!result.ok) redirect(`/operations?error=${encodeURIComponent(result.error)}`);
+  if (!result.ok) return { error: result.error, fieldErrors: result.fieldErrors };
 
   revalidatePath('/operations');
   redirect(`/operations/${result.data.operationId}`);
+}
+
+export interface PatientSurgerySearchState {
+  searched?: boolean;
+  result?: OperationListResult;
+  error?: string;
+  fieldErrors?: Record<string, string>;
+}
+
+/** POST-only: Patient ID never appears in the URL or browser history. */
+export async function searchPastSurgeriesFormAction(
+  _state: PatientSurgerySearchState,
+  formData: FormData,
+): Promise<PatientSurgerySearchState> {
+  const auth = await actorOrFailure();
+  if ('failure' in auth) return { searched: true, error: auth.failure.error };
+
+  const result = searchPastSurgeriesByPatientIdAction(getDb(), auth.actor, {
+    patientId: String(formData.get('patientId') ?? ''),
+    q: String(formData.get('q') ?? ''),
+    status: String(formData.get('status') ?? ''),
+    doctorId: String(formData.get('doctorId') ?? ''),
+    dateFrom: String(formData.get('dateFrom') ?? ''),
+    dateTo: String(formData.get('dateTo') ?? ''),
+  });
+  if (!result.ok) {
+    return {
+      searched: true,
+      error: result.error,
+      fieldErrors: result.fieldErrors,
+    };
+  }
+  return { searched: true, result: result.data };
 }
 
 // --- Смена врача у активной операции (только Admin) -------------------------

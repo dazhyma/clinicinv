@@ -58,7 +58,7 @@ describe('Инвариант current_quantity == SUM(quantity_delta)', () => {
     });
 
     // used_in_operation -3 и returned_from_operation +1 через операцию
-    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
     addItemToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
       itemId: item.id,
@@ -101,7 +101,7 @@ describe('Идемпотентность (§10.4, §16, AC-7.1)', () => {
   it('первое применение ключа списывает ровно один раз', () => {
     const ctx = setupTestDb();
     const item = makeItem(ctx, FIXTURES.gauze);
-    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
 
     const first = runInTransaction(ctx.db, (tx) =>
       applyMovement(tx, {
@@ -120,7 +120,7 @@ describe('Идемпотентность (§10.4, §16, AC-7.1)', () => {
   it('второй вызов с тем же ключом возвращает результат первого как успех', () => {
     const ctx = setupTestDb();
     const item = makeItem(ctx, FIXTURES.gauze);
-    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
 
     const apply = () =>
       runInTransaction(ctx.db, (tx) =>

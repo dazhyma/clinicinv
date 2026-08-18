@@ -76,7 +76,7 @@ export function ReceiveStockForm({
           name="newCostPerUnit"
           label="New cost per unit"
           error={fieldErrors.newCostPerUnit}
-          hint="Leave empty to keep the current cost. A new cost applies to future operations only; finished operations never change."
+          hint="Leave empty to keep the current cost. A new cost applies to future surgeries only; finished surgeries never change."
         >
           {(props) => (
             <input

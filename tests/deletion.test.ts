@@ -159,7 +159,7 @@ describe('Delete Pack', () => {
     const ctx = setupTestDb();
     const item = makeItem(ctx, FIXTURES.gauze);
     const pack = makeBasicPack(ctx, [{ itemId: item.id, quantity: 2 }]);
-    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
     addPackToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
       packId: pack.id,

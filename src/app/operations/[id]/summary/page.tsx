@@ -43,7 +43,7 @@ export default async function OperationSummaryPage({
           href={`/operations/${operationId}`}
           className="inline-flex w-fit items-center gap-2 rounded-lg px-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
         >
-          <ArrowLeftIcon size={18} /> Back to operation
+          <ArrowLeftIcon size={18} /> Back to surgery
         </Link>
 
         <div>
@@ -62,8 +62,8 @@ export default async function OperationSummaryPage({
         </div>
 
         <p className="text-base text-slate-600">
-          Transfer these lines into Symplast manually. The summary contains materials only — no
-          patient information is stored by this system.
+          Transfer these lines into Symplast manually. This summary contains materials only and
+          does not include Patient ID.
         </p>
       </section>
 

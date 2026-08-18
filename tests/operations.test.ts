@@ -32,7 +32,7 @@ import {
 describe('§7.3 / §8.1: операция сохраняется на сервере сразу', () => {
   it('запись существует до первого скана и имеет случайный код', () => {
     const ctx = setupTestDb();
-    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
 
     expect(operation.status).toBe('Active');
     expect(operation.randomCaseCode).toMatch(/^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{6}$/);
@@ -52,7 +52,7 @@ describe('§7.3 / §8.1: операция сохраняется на серве
     for (let i = 0; i < 50; i += 1) {
       // У врача не может быть двух незакрытых операций, поэтому каждая
       // завершается перед следующей: проверяется алфавит кода, а не пределы.
-      const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+      const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
       codes.add(operation.randomCaseCode);
       finishOperation(ctx.db, ctx.staff, operation.id);
     }
@@ -70,7 +70,7 @@ describe('AC-2.1: состав операции переживает переч�
     const gloves = makeItem(ctx, FIXTURES.gloves);
     const syringe = makeItem(ctx, FIXTURES.syringe);
 
-    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
     for (let i = 0; i < 3; i += 1) {
       addItemToOperation(ctx.db, ctx.staff, {
         operationId: operation.id,
@@ -108,7 +108,7 @@ describe('AC-2.2: исправления корректируют остаток
   it('уменьшение количества возвращает разницу движением returned_from_operation', () => {
     const ctx = setupTestDb();
     const gauze = makeItem(ctx, FIXTURES.gauze);
-    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
     const added = addItemToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
       itemId: gauze.id,
@@ -133,7 +133,7 @@ describe('AC-2.2: исправления корректируют остаток
   it('удаление строки возвращает всё списанное и убирает строку (Q-31)', () => {
     const ctx = setupTestDb();
     const syringe = makeItem(ctx, FIXTURES.syringe);
-    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
     const added = addItemToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
       itemId: syringe.id,
@@ -156,7 +156,7 @@ describe('Undo Last Scan (§7.9, Q-27)', () => {
   it('откатывает последний отдельный скан', () => {
     const ctx = setupTestDb();
     const gauze = makeItem(ctx, FIXTURES.gauze);
-    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
 
     addItemToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
@@ -188,7 +188,7 @@ describe('Undo Last Scan (§7.9, Q-27)', () => {
       { itemId: gloves.id, quantity: 3 },
     ]);
 
-    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
     addPackToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
       packId: pack.id,
@@ -210,7 +210,7 @@ describe('Undo Last Scan (§7.9, Q-27)', () => {
 
   it('без добавляющих событий сообщает «Nothing to undo»', () => {
     const ctx = setupTestDb();
-    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
     expect(() =>
       undoLastScan(ctx.db, ctx.staff, {
         operationId: operation.id,
@@ -225,7 +225,7 @@ describe('AC-2.3: несколько активных операций сосу�
     const ctx = setupTestDb();
     const gauze = makeItem(ctx, FIXTURES.gauze);
 
-    const first = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const first = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
     addItemToOperation(ctx.db, ctx.staff, {
       operationId: first.id,
       itemId: gauze.id,
@@ -236,7 +236,7 @@ describe('AC-2.3: несколько активных операций сосу�
     // §8.5: две активные операции сосуществуют — но у РАЗНЫХ врачей и в пределах
     // двух операционных кабинетов.
     const wong = makeDoctor(ctx, 'Wong');
-    const second = startOperation(ctx.db, ctx.staff, { doctorId: wong.id });
+    const second = startOperation(ctx.db, ctx.staff, { doctorId: wong.id, patientId: "000123" });
     expect(second.id).not.toBe(first.id);
     expect(second.randomCaseCode).not.toBe(first.randomCaseCode);
 
@@ -260,7 +260,7 @@ describe('AC-2.4: контроль доступного количества (§
     const mask = makeItem(ctx, { ...FIXTURES.mask, quantity: 2 });
     setNegativeStockMode(ctx, 'warn');
 
-    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
     addItemToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
       itemId: mask.id,
@@ -286,7 +286,7 @@ describe('AC-2.4: контроль доступного количества (§
     const mask = makeItem(ctx, { ...FIXTURES.mask, quantity: 2 });
     setNegativeStockMode(ctx, 'block');
 
-    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
     expect(() =>
       addItemToOperation(ctx.db, ctx.staff, {
         operationId: operation.id,
@@ -305,7 +305,7 @@ describe('§9.2 / §18.14: Finished только по явному действ�
   it('finishOperation фиксирует итог и запрещает дальнейшие изменения', () => {
     const ctx = setupTestDb();
     const gauze = makeItem(ctx, FIXTURES.gauze);
-    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
     const added = addItemToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
       itemId: gauze.id,
@@ -325,7 +325,7 @@ describe('§9.2 / §18.14: Finished только по явному действ�
         itemId: gauze.id,
         clientEventId: nextClientEventId('scan'),
       }),
-    ).toThrowError('Operation was already finished');
+    ).toThrowError('Surgery was already finished');
 
     expect(() =>
       setLineQuantity(ctx.db, ctx.staff, {
@@ -334,10 +334,10 @@ describe('§9.2 / §18.14: Finished только по явному действ�
         quantity: 1,
         clientEventId: nextClientEventId('qty'),
       }),
-    ).toThrowError('Operation was already finished');
+    ).toThrowError('Surgery was already finished');
 
     expect(() => finishOperation(ctx.db, ctx.staff, operation.id)).toThrowError(
-      'Operation was already finished',
+      'Surgery was already finished',
     );
 
     expect(getItem(ctx.db, gauze.id)!.currentQuantity).toBe(8);
@@ -347,7 +347,7 @@ describe('§9.2 / §18.14: Finished только по явному действ�
   it('Finish не создаёт движений остатков — они уже созданы при добавлении', () => {
     const ctx = setupTestDb();
     const gauze = makeItem(ctx, FIXTURES.gauze);
-    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
     addItemToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
       itemId: gauze.id,
@@ -362,7 +362,7 @@ describe('§9.2 / §18.14: Finished только по явному действ�
 });
 
 describe('§14.4: конкретные сообщения об ошибках', () => {
-  it('неактивный предмет — «Item is inactive», несуществующая операция — «Operation not found»', () => {
+  it('неактивный предмет — «Item is inactive», несуществующая операция — «Surgery not found»', () => {
     const ctx = setupTestDb();
     const gauze = makeItem(ctx, FIXTURES.gauze);
 
@@ -372,6 +372,6 @@ describe('§14.4: конкретные сообщения об ошибках', 
         itemId: gauze.id,
         clientEventId: nextClientEventId('scan'),
       }),
-    ).toThrowError('Operation not found');
+    ).toThrowError('Surgery not found');
   });
 });

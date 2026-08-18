@@ -38,7 +38,7 @@ function expectFailure(result: { ok: boolean }) {
 
 function startOperation(ctx: TestContext, actor = ctx.staff, doctorId = ctx.doctor.id) {
   return expectSuccess<{ operationId: number; caseCode: string }>(
-    startOperationAction(ctx.db, actor, { doctorId }),
+    startOperationAction(ctx.db, actor, { doctorId, patientId: '000123' }),
   ).data;
 }
 
@@ -462,7 +462,7 @@ describe('Finish фиксирует итог, и он не меняется от
         clientEventId: nextClientEventId('scan'),
       }),
     );
-    expect(failure.error).toBe('Operation was already finished');
+    expect(failure.error).toBe('Surgery was already finished');
     expect(stockOf(ctx, gauze.id)).toBe(9);
   });
 
@@ -496,7 +496,7 @@ describe('Finish фиксирует итог, и он не меняется от
     expect(first.caseCode).toMatch(/^[A-Z]{2,4}\d{5}$/);
 
     const second = expectFailure(finishOperationAction(ctx.db, ctx.admin, operation.operationId));
-    expect(second.error).toBe('Operation was already finished');
+    expect(second.error).toBe('Surgery was already finished');
     expect(second.code).toBe('OPERATION_ALREADY_FINISHED');
 
     // Второе нажатие не создало ни движений, ни второй отметки времени.
@@ -532,7 +532,7 @@ describe('Finish фиксирует итог, и он не меняется от
     const failure = expectFailure(
       finishOperationAction(ctx.db, ctx.admin, operation.operationId),
     );
-    expect(failure.error).toBe('Operation was already voided');
+    expect(failure.error).toBe('Surgery was already voided');
 
     const row = ctx.db
       .select()
@@ -589,7 +589,7 @@ describe('Void: только Admin, ровно один раз', () => {
       voidOperationAction(ctx.db, ctx.admin, operation.operationId, 'again'),
     );
     // §14.4, эталонная формулировка.
-    expect(second.error).toBe('Operation was already voided');
+    expect(second.error).toBe('Surgery was already voided');
     expect(stockOf(ctx, gauze.id)).toBe(10);
     expect(
       listMovementsForOperation(ctx.db, operation.operationId).filter(

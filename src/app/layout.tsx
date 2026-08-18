@@ -3,7 +3,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'Clinic Inventory',
-  description: 'Internal inventory and operation supplies tracking',
+  description: 'Internal inventory and surgery supplies tracking',
   // §15/NFR-18: система полностью закрыта, индексация исключена.
   robots: { index: false, follow: false },
 };

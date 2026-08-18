@@ -71,6 +71,18 @@ export const env = {
   get loginLockoutMs(): number {
     return int('LOGIN_LOCKOUT_MINUTES', 15) * 60 * 1000;
   },
+  /**
+   * 32 случайных байта в base64. Patient ID шифруется до записи в SQLite, а
+   * индекс точного поиска keyed, поэтому без ключа оба значения бесполезны.
+   */
+  get patientIdSecret(): string {
+    const value = process.env.PATIENT_ID_SECRET;
+    if (value) return value;
+    if (process.env.NODE_ENV === 'test') {
+      return 'dGVzdC1vbmx5LXBhdGllbnQtaWQtc2VjcmV0LWtleSE=';
+    }
+    throw new Error('PATIENT_ID_SECRET is required');
+  },
   get seedAccounts(): {
     admin: { username: string; password: string | undefined };
     staff: { username: string; password: string | undefined };

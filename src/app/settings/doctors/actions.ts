@@ -89,6 +89,6 @@ export async function deleteDoctorFormAction(
     message:
       result.data.disposition === 'deleted'
         ? `${result.data.lastName} deleted.`
-        : `${result.data.lastName} archived — ${result.data.operationCount} operation(s) keep their codes.`,
+        : `${result.data.lastName} archived — ${result.data.operationCount} surgery record(s) keep their codes.`,
   };
 }

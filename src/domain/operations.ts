@@ -34,6 +34,7 @@ import {
   type PackRow,
   type SourceType,
 } from '@/db/schema';
+import { encryptPatientId, patientIdLookup } from '@/security/patient-id';
 import { assertAdmin, assertAuthenticated, type Actor } from './actor';
 import { AUDIT_ACTIONS, writeAudit } from './audit';
 import {
@@ -315,7 +316,7 @@ function warnOnLargeQuantity(
     warnings.push({
       code: 'LARGE_QUANTITY',
       itemId: line.itemId,
-      message: `${line.quantity} units of ${line.itemNameSnapshot} in one operation — please confirm this is correct`,
+      message: `${line.quantity} units of ${line.itemNameSnapshot} in one surgery — please confirm this is correct`,
     });
   }
 }
@@ -348,6 +349,8 @@ function replayResult(tx: DbLike, operationId: number, itemIds: number[]): AddTo
 export interface StartOperationInput {
   /** Обязателен: из его кода строится обозначение операции «CH00001». */
   doctorId: number;
+  /** Только цифры; зашифрованная строка сохраняет ведущие нули (D-72). */
+  patientId: string;
   /** Только значение из закрытого справочника обобщённых категорий (§2.4, Q-2). */
   procedureCategory?: string | null;
 }
@@ -380,6 +383,8 @@ export function startOperation(
   if (!Number.isSafeInteger(input.doctorId) || input.doctorId <= 0) {
     throw errors.doctorRequired();
   }
+  if (!input.patientId) throw errors.patientIdRequired();
+  if (!/^\d{1,64}$/.test(input.patientId)) throw errors.invalidPatientId();
 
   return runInTransaction(db, (tx) => {
     const doctor = loadSelectableDoctor(tx, input.doctorId);
@@ -409,6 +414,8 @@ export function startOperation(
           doctorNameSnapshot: doctor.lastName,
           status: 'Active',
           procedureCategory: input.procedureCategory?.trim() || null,
+          patientIdEncrypted: encryptPatientId(input.patientId),
+          patientIdLookup: patientIdLookup(input.patientId),
           totalCostSnapshotCents: null,
           createdAt: now,
           updatedAt: now,
@@ -447,7 +454,7 @@ export function setOperationDoctor(
   operationId: number,
   doctorId: number,
 ): OperationRow {
-  assertAdmin(actor, 'change the doctor of an operation');
+  assertAdmin(actor, 'change the doctor of a surgery');
 
   return runInTransaction(db, (tx) => {
     const operation = loadActiveOperation(tx, operationId);
@@ -1023,7 +1030,7 @@ export function voidOperation(
   operationId: number,
   reason?: string | null,
 ): VoidOperationResult {
-  assertAdmin(actor, 'void operation');
+  assertAdmin(actor, 'void surgery');
 
   return runInTransaction(db, (tx) => {
     const operation = getOperation(tx, operationId);
@@ -1112,7 +1119,7 @@ export function deleteVoidedOperation(
   actor: Actor,
   operationId: number,
 ): DeleteVoidedOperationResult {
-  assertAdmin(actor, 'delete voided operation');
+  assertAdmin(actor, 'delete voided surgery');
 
   return runInTransaction(db, (tx) => {
     const operation = getOperation(tx, operationId);
@@ -1134,7 +1141,7 @@ export function deleteVoidedOperation(
       .find((row) => Number(row.net) !== 0);
     if (unbalanced) {
       throw errors.validationFailed(
-        'Voided operation movements are not balanced; operation was not deleted',
+        'Voided surgery movements are not balanced; surgery was not deleted',
       );
     }
 
@@ -1205,10 +1212,12 @@ export function summarizeOperation(tx: DbLike, operation: OperationRow): Operati
 export interface OperationListFilters {
   statuses?: OperationStatus[];
   /**
-   * §7.2: поиск по коду операции. Искать больше не по чему и не должно быть:
-   * пациентских полей в модели нет (§2.4, §18.3).
+   * §7.2: обычный поиск по коду surgery. Patient ID ищется отдельно только по
+   * серверному HMAC, поэтому открытое значение в общий query не попадает (D-72).
    */
   query?: string;
+  /** HMAC вычисляет авторизованный action; открытый Patient ID сюда не передаётся. */
+  patientIdLookup?: string;
   procedureCategory?: string | null;
   /** Фильтр по врачу — по строке справочника, а не по снимку кода. */
   doctorId?: number | null;
@@ -1236,6 +1245,10 @@ export function listOperations(tx: DbLike, filters: OperationListFilters = {}): 
       sql`(coalesce(${operations.caseCode}, '') like ${term} escape '\\'
            or ${operations.randomCaseCode} like ${term} escape '\\')`,
     );
+  }
+
+  if (filters.patientIdLookup) {
+    conditions.push(eq(operations.patientIdLookup, filters.patientIdLookup));
   }
 
   if (filters.procedureCategory) {

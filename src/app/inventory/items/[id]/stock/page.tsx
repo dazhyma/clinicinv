@@ -81,7 +81,7 @@ export default async function ItemStockPage({
           <section className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
             <h2 className="mb-1 text-xl font-semibold">Manual Adjustment</h2>
             <p className="mb-4 text-base text-slate-600">
-              Finished operations are never changed by an adjustment.
+              Finished surgeries are never changed by an adjustment.
             </p>
             <AdjustStockForm item={item} action={adjustStockFormAction} />
           </section>

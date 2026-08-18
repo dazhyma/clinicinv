@@ -51,9 +51,9 @@ describe('Код врача', () => {
 describe('Обозначение операции', () => {
   it('складывается из кода врача и сквозного номера', () => {
     const ctx = setupTestDb();
-    const first = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const first = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
     finishOperation(ctx.db, ctx.staff, first.id);
-    const second = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const second = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
 
     expect(first.caseCode).toBe('CH00001');
     expect(second.caseCode).toBe('CH00002');
@@ -63,10 +63,10 @@ describe('Обозначение операции', () => {
     const ctx = setupTestDb();
     const wong = makeDoctor(ctx, 'Wong');
 
-    const chenFirst = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
-    const wongFirst = startOperation(ctx.db, ctx.staff, { doctorId: wong.id });
+    const chenFirst = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
+    const wongFirst = startOperation(ctx.db, ctx.staff, { doctorId: wong.id, patientId: "000123" });
     finishOperation(ctx.db, ctx.staff, chenFirst.id);
-    const chenSecond = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const chenSecond = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
 
     expect(wongFirst.caseCode).toBe('WO00001');
     expect(chenSecond.caseCode).toBe('CH00002');
@@ -74,7 +74,7 @@ describe('Обозначение операции', () => {
 
   it('сохраняет снимок врача и внутренний случайный код', () => {
     const ctx = setupTestDb();
-    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
 
     expect(operation.doctorCodeSnapshot).toBe('CH');
     expect(operation.doctorNameSnapshot).toBe('Chen');
@@ -85,22 +85,22 @@ describe('Обозначение операции', () => {
 
   it('не создаётся без врача', () => {
     const ctx = setupTestDb();
-    expect(() => startOperation(ctx.db, ctx.staff, { doctorId: 0 })).toThrow(/select a doctor/i);
+    expect(() => startOperation(ctx.db, ctx.staff, { doctorId: 0, patientId: "000123" })).toThrow(/select a doctor/i);
   });
 
   it('не создаётся у архивированного врача', () => {
     const ctx = setupTestDb();
-    startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
     deleteDoctor(ctx.db, ctx.admin, ctx.doctor.id);
 
-    expect(() => startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id })).toThrow(
+    expect(() => startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" })).toThrow(
       /archived/i,
     );
   });
 
   it('не меняется, когда врачу правят код', () => {
     const ctx = setupTestDb();
-    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
     updateDoctor(ctx.db, ctx.admin, { doctorId: ctx.doctor.id, lastName: 'Chen', code: 'CX' });
 
     const stored = ctx.db.select().from(operations).all()[0];
@@ -112,36 +112,36 @@ describe('Обозначение операции', () => {
 describe('Пределы одновременно активных операций', () => {
   it('не даёт врачу вторую активную операцию', () => {
     const ctx = setupTestDb();
-    const first = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const first = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
 
-    expect(() => startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id })).toThrow(
-      new RegExp(`Chen already has an active operation \\(${first.caseCode}\\)`),
+    expect(() => startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" })).toThrow(
+      new RegExp(`Chen already has an active surgery \\(${first.caseCode}\\)`),
     );
   });
 
   it('разрешает следующую операцию после Finish', () => {
     const ctx = setupTestDb();
-    const first = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const first = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
     finishOperation(ctx.db, ctx.staff, first.id);
 
-    const second = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const second = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
     expect(second.caseCode).toBe('CH00002');
   });
 
   it('разрешает следующую операцию после Void', () => {
     const ctx = setupTestDb();
-    const first = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const first = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
     voidOperation(ctx.db, ctx.admin, first.id);
 
-    expect(() => startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id })).not.toThrow();
+    expect(() => startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" })).not.toThrow();
   });
 
   it('допускает две активные операции у разных врачей', () => {
     const ctx = setupTestDb();
     const wong = makeDoctor(ctx, 'Wong');
 
-    expect(() => startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id })).not.toThrow();
-    expect(() => startOperation(ctx.db, ctx.staff, { doctorId: wong.id })).not.toThrow();
+    expect(() => startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" })).not.toThrow();
+    expect(() => startOperation(ctx.db, ctx.staff, { doctorId: wong.id, patientId: "000123" })).not.toThrow();
     expect(countActiveOperations(ctx.db)).toBe(2);
   });
 
@@ -150,10 +150,10 @@ describe('Пределы одновременно активных операц�
     const wong = makeDoctor(ctx, 'Wong');
     const chapman = makeDoctor(ctx, 'Chapman', 'CP');
 
-    startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
-    startOperation(ctx.db, ctx.staff, { doctorId: wong.id });
+    startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
+    startOperation(ctx.db, ctx.staff, { doctorId: wong.id, patientId: "000123" });
 
-    expect(() => startOperation(ctx.db, ctx.staff, { doctorId: chapman.id })).toThrow(
+    expect(() => startOperation(ctx.db, ctx.staff, { doctorId: chapman.id, patientId: "000123" })).toThrow(
       /All 2 operating rooms are in use/,
     );
     expect(OPERATING_ROOMS).toBe(2);
@@ -164,18 +164,18 @@ describe('Пределы одновременно активных операц�
     const wong = makeDoctor(ctx, 'Wong');
     const chapman = makeDoctor(ctx, 'Chapman', 'CP');
 
-    const first = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
-    startOperation(ctx.db, ctx.staff, { doctorId: wong.id });
+    const first = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
+    startOperation(ctx.db, ctx.staff, { doctorId: wong.id, patientId: "000123" });
     finishOperation(ctx.db, ctx.staff, first.id);
 
-    expect(() => startOperation(ctx.db, ctx.staff, { doctorId: chapman.id })).not.toThrow();
+    expect(() => startOperation(ctx.db, ctx.staff, { doctorId: chapman.id, patientId: "000123" })).not.toThrow();
   });
 
   it('запрещено и на уровне БД, в обход домена', () => {
     const ctx = setupTestDb();
     const wong = makeDoctor(ctx, 'Wong');
-    startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
-    startOperation(ctx.db, ctx.staff, { doctorId: wong.id });
+    startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
+    startOperation(ctx.db, ctx.staff, { doctorId: wong.id, patientId: "000123" });
 
     // §21.1: недопустимое состояние нельзя записать даже прямой вставкой.
     const insert = () =>
@@ -195,7 +195,7 @@ describe('Смена врача у операции', () => {
   it('выдаёт код нового врача и не переиспользует прежний номер', () => {
     const ctx = setupTestDb();
     const wong = makeDoctor(ctx, 'Wong');
-    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
     expect(operation.caseCode).toBe('CH00001');
 
     const moved = setOperationDoctor(ctx.db, ctx.admin, operation.id, wong.id);
@@ -203,25 +203,25 @@ describe('Смена врача у операции', () => {
     expect(moved.doctorNameSnapshot).toBe('Wong');
 
     // CH00001 освободился, но повторно не выдаётся: счётчик только растёт.
-    const next = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const next = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
     expect(next.caseCode).toBe('CH00002');
   });
 
   it('не переносит операцию врачу, у которого уже есть незакрытая', () => {
     const ctx = setupTestDb();
     const wong = makeDoctor(ctx, 'Wong');
-    const chen = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
-    const wongOperation = startOperation(ctx.db, ctx.staff, { doctorId: wong.id });
+    const chen = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
+    const wongOperation = startOperation(ctx.db, ctx.staff, { doctorId: wong.id, patientId: "000123" });
 
     expect(() => setOperationDoctor(ctx.db, ctx.admin, chen.id, wong.id)).toThrow(
-      new RegExp(`Wong already has an active operation \\(${wongOperation.caseCode}\\)`),
+      new RegExp(`Wong already has an active surgery \\(${wongOperation.caseCode}\\)`),
     );
   });
 
   it('недоступна Staff', () => {
     const ctx = setupTestDb();
     const wong = makeDoctor(ctx, 'Wong');
-    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
 
     expect(() => setOperationDoctor(ctx.db, ctx.staff, operation.id, wong.id)).toThrow(
       /permission/i,
@@ -241,7 +241,7 @@ describe('Удаление врача', () => {
 
   it('архивирует врача с операциями и сохраняет их коды', () => {
     const ctx = setupTestDb();
-    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
 
     const result = deleteDoctor(ctx.db, ctx.admin, ctx.doctor.id);
     expect(result.disposition).toBe('archived');
@@ -254,17 +254,17 @@ describe('Удаление врача', () => {
 
   it('не сбрасывает нумерацию при повторном заведении того же кода', () => {
     const ctx = setupTestDb();
-    const chenFirst = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const chenFirst = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
     finishOperation(ctx.db, ctx.staff, chenFirst.id);
     const wong = makeDoctor(ctx, 'Wong');
     deleteDoctor(ctx.db, ctx.admin, wong.id);
 
     const wongAgain = makeDoctor(ctx, 'Wong');
-    const first = startOperation(ctx.db, ctx.staff, { doctorId: wongAgain.id });
+    const first = startOperation(ctx.db, ctx.staff, { doctorId: wongAgain.id, patientId: "000123" });
     expect(first.caseCode).toBe('WO00001');
 
     // А у Chen номер продолжается, а не начинается заново.
-    const chen = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const chen = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
     expect(chen.caseCode).toBe('CH00002');
   });
 });
@@ -273,8 +273,8 @@ describe('Фильтры списка операций', () => {
   it('отбирают по врачу', () => {
     const ctx = setupTestDb();
     const wong = makeDoctor(ctx, 'Wong');
-    startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
-    startOperation(ctx.db, ctx.staff, { doctorId: wong.id });
+    startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
+    startOperation(ctx.db, ctx.staff, { doctorId: wong.id, patientId: "000123" });
 
     const rows = listOperations(ctx.db, { doctorId: wong.id });
     expect(rows.map((row) => row.caseCode)).toEqual(['WO00001']);
@@ -282,7 +282,7 @@ describe('Фильтры списка операций', () => {
 
   it('отбирают по диапазону дат создания', () => {
     const ctx = setupTestDb();
-    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
     const createdMs = operation.createdAt.getTime();
 
     expect(
@@ -294,7 +294,7 @@ describe('Фильтры списка операций', () => {
 
   it('ищут по показываемому коду операции', () => {
     const ctx = setupTestDb();
-    startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
 
     expect(listOperations(ctx.db, { query: 'CH00001' })).toHaveLength(1);
     expect(listOperations(ctx.db, { query: 'WO' })).toHaveLength(0);

@@ -86,7 +86,7 @@ export default async function PackDetailPage({ params }: { params: Promise<{ id:
             entityId={pack.id}
             triggerLabel="Delete Pack"
             title={`Delete ${pack.name}?`}
-            description="Items inside this pack will not be deleted. Previous operations will remain unchanged."
+            description="Items inside this pack will not be deleted. Previous surgeries will remain unchanged."
             confirmLabel="Delete Pack"
           />
         </section>

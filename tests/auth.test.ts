@@ -373,7 +373,7 @@ describe('Сессии (§3.4, §8.2, §18.12)', () => {
     const gauze = makeItem(ctx, FIXTURES.gauze);
 
     const session = createSession(ctx.db, ctx.staff.accountId);
-    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id });
+    const operation = startOperation(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: "000123" });
     addItemToOperation(ctx.db, ctx.staff, {
       operationId: operation.id,
       itemId: gauze.id,

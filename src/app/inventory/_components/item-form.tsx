@@ -179,7 +179,7 @@ export function ItemForm({
               {item?.currentQuantity ?? 0} {item?.unitOfMeasurement ?? ''}
             </p>
             <p className="text-sm text-slate-500">
-              Stock changes only through Receive Stock, adjustments and operations (§10.4).
+              Stock changes only through Receive Stock, adjustments and surgeries (§10.4).
             </p>
           </div>
         )}

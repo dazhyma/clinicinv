@@ -59,7 +59,7 @@ export default async function OperationPage({ params }: { params: Promise<{ id: 
         <AppHeader
           title={`Case ${state.caseCode}`}
           backHref="/operations"
-          backLabel="Operations"
+          backLabel="Surgeries"
           account={{ username: account.username, role: account.role }}
         />
 
@@ -68,7 +68,7 @@ export default async function OperationPage({ params }: { params: Promise<{ id: 
         <section className="mt-4 rounded-2xl bg-white p-4 ring-1 ring-slate-200 sm:p-5">
           <h2 className="mb-3 text-xl font-semibold">Items used</h2>
           {state.lines.length === 0 ? (
-            <p className="text-lg text-slate-600">No items were added to this operation.</p>
+            <p className="text-lg text-slate-600">No items were added to this surgery.</p>
           ) : (
             <>
               <ul className="flex flex-col gap-2">
@@ -94,8 +94,8 @@ export default async function OperationPage({ params }: { params: Promise<{ id: 
           <section className="mt-4 rounded-2xl bg-white p-4 ring-1 ring-slate-200 sm:p-5">
             <h2 className="text-xl font-semibold">Symplast summary</h2>
             <p className="mb-4 text-base text-slate-600">
-              Materials used, ready to be transferred manually. No patient information is stored or
-              shown.
+              Materials used, ready to be transferred manually. Patient ID is not included in this
+              summary.
             </p>
 
             <SummaryTable summary={summary} />
@@ -136,7 +136,7 @@ export default async function OperationPage({ params }: { params: Promise<{ id: 
 
         <p className="mt-6 text-center">
           <Link href="/operations" className="text-lg text-slate-600 underline underline-offset-4">
-            All operations
+            All surgeries
           </Link>
         </p>
       </main>
@@ -146,9 +146,9 @@ export default async function OperationPage({ params }: { params: Promise<{ id: 
   return (
     <main className="app-shell flex max-w-4xl flex-col">
       <AppHeader
-        title="Operation"
+        title="Surgery"
         backHref="/operations"
-        backLabel="Operations"
+        backLabel="Surgeries"
         account={{ username: account.username, role: account.role }}
       />
       <OperationDoctorBar
@@ -175,6 +175,7 @@ export default async function OperationPage({ params }: { params: Promise<{ id: 
  */
 function OperationHeaderCard({ state }: { state: OperationStateView }) {
   const rows: { label: string; value: string }[] = [
+    { label: 'Patient ID', value: state.patientId ?? 'Not provided' },
     { label: 'Created', value: formatDateTime(state.createdAtMs) },
   ];
   // Снимок фамилии: архивирование или переименование врача карточку не меняет.

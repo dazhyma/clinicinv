@@ -32,15 +32,15 @@ export function SettingsForm({ settings }: { settings: SettingsView }) {
       </SettingsSection>
 
       <SettingsSection
-        title="Operation Settings"
-        description="Controls used while supplies are recorded during an operation."
+        title="Surgery Settings"
+        description="Controls used while supplies are recorded during a surgery."
       >
         <div className="grid gap-2">
           <label htmlFor="negativeStockMode" className="font-semibold">
             When stock is not enough
           </label>
           <p className="text-sm text-slate-600">
-            Choose whether to warn or block when an operation would create negative stock.
+            Choose whether to warn or block when a surgery would create negative stock.
           </p>
           <Select
             id="negativeStockMode"

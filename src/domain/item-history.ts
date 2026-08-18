@@ -90,11 +90,11 @@ function movementPresentation(type: string, reason?: string | null): {
     case 'manual_adjustment':
       return { action: 'Manual Adjustment', category: 'adjustments' };
     case 'used_in_operation':
-      return { action: 'Used in Operation', category: 'operations' };
+      return { action: 'Used in Surgery', category: 'operations' };
     case 'returned_from_operation':
-      return { action: 'Returned from Active Operation', category: 'operations' };
+      return { action: 'Returned from Active Surgery', category: 'operations' };
     case 'void_reversal':
-      return { action: 'Returned by Void Operation', category: 'operations' };
+      return { action: 'Returned by Void Surgery', category: 'operations' };
     default:
       return { action: type, category: 'adjustments' };
   }

@@ -15,7 +15,7 @@ export const ITEM_HISTORY_FILTERS: Array<{
   { value: 'all', label: 'All' },
   { value: 'received', label: 'Stock Received' },
   { value: 'counts', label: 'Inventory Counts' },
-  { value: 'operations', label: 'Operations' },
+  { value: 'operations', label: 'Surgeries' },
   { value: 'adjustments', label: 'Manual Adjustments' },
   { value: 'information', label: 'Item Information Changes' },
   { value: 'cost', label: 'Cost Changes' },

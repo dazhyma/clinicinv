@@ -106,7 +106,7 @@ export default async function ItemHistoryPage({
               ) : null}
 
               <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-base text-slate-600">
-                {entry.operationCode ? <span>Operation: {entry.operationCode}</span> : null}
+                {entry.operationCode ? <span>Surgery: {entry.operationCode}</span> : null}
                 {entry.inventoryCountCode ? (
                   <span>Inventory Count: {entry.inventoryCountCode}</span>
                 ) : null}

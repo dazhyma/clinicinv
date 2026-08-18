@@ -33,14 +33,14 @@ export function DoctorsManager({ doctors }: { doctors: DoctorView[] }) {
       <Card className="p-5 sm:p-6">
         <h2 className="text-xl font-semibold">Doctors</h2>
         <p className="mt-1 mb-4 text-base text-slate-600">
-          The doctor code is the prefix of every operation code for that doctor, for example
-          CH00001. Changing a code does not rewrite operations that already exist.
+          The doctor code is the prefix of every surgery code for that doctor, for example
+          CH00001. Changing a code does not rewrite surgeries that already exist.
         </p>
 
         {active.length === 0 ? (
           <EmptyState
             title="No doctors yet."
-            description="Add the first doctor above — an operation cannot be created without one."
+            description="Add the first doctor above — a surgery cannot be created without one."
           />
         ) : (
           <ul className="flex flex-col gap-3">
@@ -55,7 +55,7 @@ export function DoctorsManager({ doctors }: { doctors: DoctorView[] }) {
         <Card className="p-5 sm:p-6">
           <h2 className="text-xl font-semibold">Archived doctors</h2>
           <p className="mt-1 mb-4 text-base text-slate-600">
-            Archived doctors cannot be selected for a new operation. Their past operations keep
+            Archived doctors cannot be selected for a new surgery. Their past surgeries keep
             their codes, and their numbering never restarts.
           </p>
           <ul className="flex flex-col gap-3">
@@ -70,7 +70,7 @@ export function DoctorsManager({ doctors }: { doctors: DoctorView[] }) {
                 </div>
                 <StatusBadge tone="neutral">Archived</StatusBadge>
                 <span className="text-base text-slate-600">
-                  {doctor.operationCount} operation(s)
+                  {doctor.operationCount} surgery record(s)
                 </span>
               </li>
             ))}
@@ -162,7 +162,7 @@ function DoctorRow({ doctor }: { doctor: DoctorView }) {
             <p className="text-base text-slate-600">{doctor.fullName}</p>
           ) : null}
         </div>
-        <span className="text-base text-slate-600">{doctor.operationCount} operation(s)</span>
+        <span className="text-base text-slate-600">{doctor.operationCount} surgery record(s)</span>
         <Button
           variant="secondary"
           size="compact"
@@ -192,7 +192,7 @@ function DoctorRow({ doctor }: { doctor: DoctorView }) {
             label="Doctor code"
             required
             error={fieldErrors.code}
-            hint="Operations created earlier keep the code they were issued."
+            hint="Surgeries created earlier keep the code they were issued."
           >
             {(props) => (
               <input
@@ -260,8 +260,8 @@ function DeleteDoctorButton({ doctor }: { doctor: DoctorView }) {
             </h2>
             <p className="mt-3 text-slate-700">
               {willArchive
-                ? `${doctor.lastName} is used by ${doctor.operationCount} operation(s), so the record is archived instead of deleted. Those operations keep their codes, and ${doctor.code} numbering never restarts.`
-                : `${doctor.lastName} has no operations and will be removed completely.`}
+                ? `${doctor.lastName} is used by ${doctor.operationCount} surgery record(s), so the record is archived instead of deleted. Those surgeries keep their codes, and ${doctor.code} numbering never restarts.`
+                : `${doctor.lastName} has no surgeries and will be removed completely.`}
             </p>
 
             {state.error ? (

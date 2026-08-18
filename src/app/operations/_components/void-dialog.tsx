@@ -45,7 +45,7 @@ export function VoidOperationButton({
       if (redirectTo) router.push(redirectTo);
       else router.refresh();
     } catch {
-      setError('The operation was not voided — check connection and try again');
+      setError('The surgery was not voided — check connection and try again');
     } finally {
       setBusy(false);
     }
@@ -63,7 +63,7 @@ export function VoidOperationButton({
             : ''
         }
       >
-        Void Operation
+        Void Surgery
       </Button>
 
       {open ? (
@@ -71,15 +71,15 @@ export function VoidOperationButton({
           <div
             role="dialog"
             aria-modal="true"
-            aria-label={`Void Operation ${caseCode}`}
+            aria-label={`Void Surgery ${caseCode}`}
             className="modal-panel app-card w-full max-w-lg p-6 shadow-[var(--shadow-raised)]"
           >
-            <h2 className="text-2xl font-semibold">Void Operation {caseCode}?</h2>
+            <h2 className="text-2xl font-semibold">Void Surgery {caseCode}?</h2>
             <p className="mt-3 text-lg text-slate-700">
-              All inventory deducted by this operation will be returned.
+              All inventory deducted by this surgery will be returned.
             </p>
             <p className="text-lg text-slate-700">
-              The operation will be excluded from financial totals.
+              The surgery will be excluded from financial totals.
             </p>
 
             <label htmlFor={`void-reason-${operationId}`} className="mt-5 block text-base font-medium">
@@ -113,7 +113,7 @@ export function VoidOperationButton({
                 onClick={confirm}
                 disabled={busy}
               >
-                {busy ? 'Voiding…' : 'Void Operation'}
+                {busy ? 'Voiding…' : 'Void Surgery'}
               </Button>
             </div>
           </div>

@@ -1,11 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useActionState, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import type { DoctorView } from '@/actions/doctors';
-import { Alert, Button, buttonClassName, FieldLabel, Select } from '../../_components/ui';
-import { startOperationFormAction } from '../actions';
+import { Alert, Button, buttonClassName, FieldLabel, Input, Select } from '../../_components/ui';
+import { startOperationFormAction, type StartSurgeryFormState } from '../actions';
+
+const initialState: StartSurgeryFormState = {};
 
 /**
  * Окно «Create Operation» (новое дополнение к ТЗ).
@@ -29,10 +31,13 @@ export function CreateOperationDialog({
   rooms: { activeCount: number; rooms: number; allBusy: boolean };
 }) {
   const [open, setOpen] = useState(false);
-  const label = hasActiveOperations ? 'Start Another Operation' : 'Create Operation';
+  const available = doctors.filter((doctor) => !doctor.activeOperation);
+  const initialDoctorId = available.length === 1 ? String(available[0]?.id ?? '') : '';
+  const [doctorId, setDoctorId] = useState(initialDoctorId);
+  const [state, formAction] = useActionState(startOperationFormAction, initialState);
+  const label = hasActiveOperations ? 'Start Another Surgery' : 'Start New Surgery';
   // Врач с незакрытой операцией и переполненные кабинеты объясняются ДО выбора:
   // сервер откажет в любом случае, но узнавать об этом отказом — плохо.
-  const available = doctors.filter((doctor) => !doctor.activeOperation);
   const blocked = rooms.allBusy || available.length === 0;
 
   return (
@@ -56,14 +61,14 @@ export function CreateOperationDialog({
           <section
             role="dialog"
             aria-modal="true"
-            aria-labelledby="create-operation-title"
+            aria-labelledby="create-surgery-title"
             className="modal-panel app-card w-full max-w-lg p-6 shadow-[var(--shadow-raised)]"
           >
-            <h2 id="create-operation-title" className="text-2xl font-bold">
-              Create Operation
+            <h2 id="create-surgery-title" className="text-2xl font-bold">
+              Start New Surgery
             </h2>
             <p className="mt-2 text-slate-700">
-              The operation code is built from the doctor&rsquo;s code and the next number for
+              The surgery code is built from the doctor&rsquo;s code and the next number for
               that doctor, for example CH00001.
             </p>
 
@@ -73,8 +78,8 @@ export function CreateOperationDialog({
                   {doctors.length === 0
                     ? 'No doctors have been added yet. An administrator adds them in Settings → Doctors.'
                     : rooms.allBusy
-                      ? `All ${rooms.rooms} operating rooms are in use. Finish one of the active operations before starting another.`
-                      : 'Every doctor already has an active operation. Finish one before starting another.'}
+                      ? `All ${rooms.rooms} operating rooms are in use. Finish one of the active surgeries before starting another.`
+                      : 'Every doctor already has an active surgery. Finish one before starting another.'}
                 </Alert>
 
                 {/* Что именно мешает: код операции и ссылка прямо в диалоге. */}
@@ -111,14 +116,18 @@ export function CreateOperationDialog({
                 </div>
               </>
             ) : (
-              <form action={startOperationFormAction} className="mt-5">
+              <form action={formAction} className="mt-5 flex flex-col gap-4">
+                {state.error ? <Alert tone="danger">{state.error}</Alert> : null}
                 <FieldLabel htmlFor="doctorId">Doctor</FieldLabel>
                 <Select
                   id="doctorId"
                   name="doctorId"
                   autoFocus
                   required
-                  defaultValue={available.length === 1 ? String(available[0]?.id ?? '') : ''}
+                  value={doctorId}
+                  onChange={(event) => setDoctorId(event.currentTarget.value)}
+                  aria-invalid={state.fieldErrors?.doctorId ? true : undefined}
+                  aria-describedby={state.fieldErrors?.doctorId ? 'doctorId-error' : undefined}
                   className="mt-1 w-full text-lg"
                 >
                   <option value="" disabled>
@@ -137,8 +146,39 @@ export function CreateOperationDialog({
                     </option>
                   ))}
                 </Select>
+                {state.fieldErrors?.doctorId ? (
+                  <p id="doctorId-error" role="alert" className="text-sm font-medium text-red-700">
+                    {state.fieldErrors.doctorId}
+                  </p>
+                ) : null}
+
+                {doctorId ? (
+                  <div>
+                    <FieldLabel htmlFor="patientId">Patient ID</FieldLabel>
+                    <Input
+                      id="patientId"
+                      name="patientId"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]+"
+                      maxLength={64}
+                      required
+                      autoComplete="off"
+                      spellCheck={false}
+                      placeholder="Enter Patient ID"
+                      aria-invalid={state.fieldErrors?.patientId ? true : undefined}
+                      aria-describedby={state.fieldErrors?.patientId ? 'patientId-error' : undefined}
+                      className="mt-1 w-full text-lg"
+                    />
+                    {state.fieldErrors?.patientId ? (
+                      <p id="patientId-error" role="alert" className="mt-1 text-sm font-medium text-red-700">
+                        {state.fieldErrors.patientId}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
                 <p className="mt-2 text-base text-slate-600">
-                  A doctor can run one operation at a time, and {rooms.rooms} operations at most
+                  A doctor can run one surgery at a time, and {rooms.rooms} surgeries at most
                   can be active together — the clinic has {rooms.rooms} operating rooms.
                 </p>
 
@@ -166,7 +206,7 @@ function ConfirmButton() {
   const { pending } = useFormStatus();
   return (
     <Button type="submit" disabled={pending}>
-      {pending ? 'Creating…' : 'Create Operation'}
+      {pending ? 'Creating…' : 'Start Surgery'}
     </Button>
   );
 }

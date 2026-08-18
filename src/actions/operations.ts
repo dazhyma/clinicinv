@@ -33,6 +33,7 @@ import { isAdmin, type Actor } from '@/domain/actor';
 import { errors } from '@/domain/errors';
 import { listItems, searchItems } from '@/domain/items';
 import { formatCents } from '@/domain/money';
+import { decryptPatientId, patientIdLookup } from '@/security/patient-id';
 import {
   addItemToOperation,
   addPackToOperation,
@@ -114,6 +115,7 @@ export interface OperationStateView {
   canChangeDoctor: boolean;
   status: OperationStatus;
   procedureCategory: string | null;
+  patientId: string | null;
   createdAtMs: number;
   updatedAtMs: number;
   finishedAtMs: number | null;
@@ -187,6 +189,9 @@ function toStateView(tx: DbLike, actor: Actor, operation: OperationRow): Operati
     doctorName: operation.doctorNameSnapshot,
     status: operation.status,
     procedureCategory: operation.procedureCategory,
+    patientId: operation.patientIdEncrypted
+      ? decryptPatientId(operation.patientIdEncrypted)
+      : null,
     createdAtMs: operation.createdAt.getTime(),
     updatedAtMs: operation.updatedAt.getTime(),
     finishedAtMs: operation.finishedAt?.getTime() ?? null,
@@ -235,6 +240,8 @@ export interface OperationRowView {
   doctorName: string | null;
   status: OperationStatus;
   procedureCategory: string | null;
+  /** В обычной истории отсутствует; есть только у active и результатов POST-поиска (D-72). */
+  patientId?: string | null;
   createdAtMs: number;
   finishedAtMs: number | null;
   voidedAtMs: number | null;
@@ -255,6 +262,8 @@ export interface OperationListQuery {
   /** Фильтр по дате создания, YYYY-MM-DD включительно. Обе границы опциональны. */
   dateFrom?: string;
   dateTo?: string;
+  /** Серверный keyed token для точного поиска; открытый Patient ID сюда не попадает. */
+  patientIdLookup?: string;
   limit?: number;
 }
 
@@ -292,7 +301,7 @@ export interface OperationListResult {
 
 function toRowView(
   summary: { operation: OperationRow; itemCount: number; unitCount: number; totalCostCents: number },
-  options: { showCost: boolean; isAdmin: boolean },
+  options: { showCost: boolean; isAdmin: boolean; includePatientId?: boolean },
 ): OperationRowView {
   const { operation } = summary;
   const view: OperationRowView = {
@@ -310,6 +319,13 @@ function toRowView(
     unitCount: summary.unitCount,
     canVoid: options.isAdmin && operation.status !== 'Voided',
     canDelete: options.isAdmin && operation.status === 'Voided',
+    ...(options.includePatientId
+      ? {
+          patientId: operation.patientIdEncrypted
+            ? decryptPatientId(operation.patientIdEncrypted)
+            : null,
+        }
+      : {}),
   };
 
   if (!options.showCost) return view;
@@ -343,6 +359,7 @@ export function listOperationsForActor(
     doctorId: Number.isSafeInteger(doctorId) && doctorId > 0 ? doctorId : null,
     createdFromMs: parseDayBoundary(query.dateFrom, 'start'),
     createdToMs: parseDayBoundary(query.dateTo, 'end'),
+    patientIdLookup: query.patientIdLookup,
     limit: query.limit,
   };
 
@@ -351,7 +368,9 @@ export function listOperationsForActor(
     return summarizeOperations(
       db,
       listOperations(db, { ...filters, statuses: [status] }),
-    ).map((summary) => toRowView(summary, options));
+    ).map((summary) =>
+      toRowView(summary, { ...options, includePatientId: Boolean(query.patientIdLookup) }),
+    );
   };
 
   const finished = block('Finished');
@@ -362,12 +381,10 @@ export function listOperationsForActor(
      * §8.3 требует предлагать возобновление при каждом возвращении в раздел, а
      * фильтр «за прошлую неделю» спрятал бы незакрытую операцию.
      */
-    active: selected.includes('Active')
-      ? summarizeOperations(
-          db,
-          listOperations(db, { statuses: ['Active'], query: query.q, limit: query.limit }),
-        ).map((summary) => toRowView(summary, options))
-      : [],
+    active: summarizeOperations(
+      db,
+      listOperations(db, { statuses: ['Active'], limit: query.limit }),
+    ).map((summary) => toRowView(summary, { ...options, includePatientId: true })),
     finished,
     voided: block('Voided'),
     showCost,
@@ -379,6 +396,48 @@ export function listOperationsForActor(
   // §9.3: в итог входят только завершённые операции; аннулированные исключены.
   const finishedTotal = finished.reduce((sum, row) => sum + (row.totalCostCents ?? 0), 0);
   return { ...result, finishedTotalFormatted: formatCents(finishedTotal) };
+}
+
+export interface PatientSurgerySearchInput {
+  patientId?: RawFormValue;
+  q?: RawFormValue;
+  status?: RawFormValue;
+  doctorId?: RawFormValue;
+  dateFrom?: RawFormValue;
+  dateTo?: RawFormValue;
+}
+
+/**
+ * Точный поиск Patient ID (D-72). Открытое значение существует только внутри
+ * авторизованного action и до SQL-запроса заменяется keyed lookup token.
+ */
+export function searchPastSurgeriesByPatientIdAction(
+  db: AppDatabase,
+  actor: Actor,
+  input: PatientSurgerySearchInput,
+): ActionResult<OperationListResult> {
+  const v = new FieldValidator();
+  const patientId = v.text(input.patientId);
+  if (!patientId) v.add('patientId', 'Patient ID is required.');
+  else if (patientId.length > 64) v.add('patientId', 'Patient ID must be 64 digits or fewer.');
+  else if (!/^\d+$/.test(patientId)) v.add('patientId', 'Patient ID must contain digits only.');
+  const q = v.optionalText('q', input.q, 100) ?? '';
+  const status = v.optionalText('status', input.status, 20) ?? 'all';
+  const doctorId = v.optionalText('doctorId', input.doctorId, 20) ?? '';
+  const dateFrom = v.optionalText('dateFrom', input.dateFrom, 10) ?? '';
+  const dateTo = v.optionalText('dateTo', input.dateTo, 10) ?? '';
+  if (v.hasErrors) return failFields(v.errors, 'Enter a valid Patient ID.');
+
+  return runAction(() =>
+    listOperationsForActor(db, actor, {
+      q,
+      status,
+      doctorId,
+      dateFrom,
+      dateTo,
+      patientIdLookup: patientIdLookup(patientId),
+    }),
+  );
 }
 
 // --- Start New Operation (§7.3) ---------------------------------------------
@@ -403,14 +462,18 @@ export interface StartedOperation {
 export function startOperationAction(
   db: AppDatabase,
   actor: Actor,
-  input: { doctorId?: RawFormValue } = {},
+  input: { doctorId?: RawFormValue; patientId?: RawFormValue } = {},
 ): ActionResult<StartedOperation> {
   const v = new FieldValidator();
   const doctorId = v.requiredInteger('doctorId', input.doctorId, 'Doctor', { min: 1 });
-  if (v.hasErrors) return failFields(v.errors, 'Select a doctor to start an operation');
+  const patientId = v.text(input.patientId);
+  if (!patientId) v.add('patientId', 'Patient ID is required.');
+  else if (patientId.length > 64) v.add('patientId', 'Patient ID must be 64 digits or fewer.');
+  else if (!/^\d+$/.test(patientId)) v.add('patientId', 'Patient ID must contain digits only.');
+  if (v.hasErrors) return failFields(v.errors, 'Enter the required surgery details.');
 
   return runAction(() => {
-    const operation = startOperation(db, actor, { doctorId });
+    const operation = startOperation(db, actor, { doctorId, patientId });
     return {
       operationId: operation.id,
       caseCode: displayCaseCode(operation),
@@ -430,10 +493,10 @@ export function changeOperationDoctorAction(
   actor: Actor,
   input: { operationId?: RawFormValue; doctorId?: RawFormValue },
 ): ActionResult<OperationStateView> {
-  if (!isAdmin(actor)) return forbidden('change the doctor of an operation');
+  if (!isAdmin(actor)) return forbidden('change the doctor of a surgery');
 
   const v = new FieldValidator();
-  const operationId = v.requiredInteger('operationId', input.operationId, 'Operation', { min: 1 });
+  const operationId = v.requiredInteger('operationId', input.operationId, 'Surgery', { min: 1 });
   const doctorId = v.requiredInteger('doctorId', input.doctorId, 'Doctor', { min: 1 });
   if (v.hasErrors) return failFields(v.errors);
 
@@ -497,7 +560,7 @@ export function scanIntoOperationAction(
   input: ScanInput,
 ): ActionResult<OperationMutationResult> {
   const v = new FieldValidator();
-  const operationId = v.requiredInteger('operationId', input.operationId, 'Operation', { min: 1 });
+  const operationId = v.requiredInteger('operationId', input.operationId, 'Surgery', { min: 1 });
   const barcode = v.requiredText('barcode', input.barcode, 'Barcode', 120);
   const clientEventId = requireClientEventId(v, input.clientEventId);
   if (v.hasErrors) return failFields(v.errors);
@@ -592,7 +655,7 @@ export function addItemToOperationAction(
   input: AddItemInput,
 ): ActionResult<OperationMutationResult> {
   const v = new FieldValidator();
-  const operationId = v.requiredInteger('operationId', input.operationId, 'Operation', { min: 1 });
+  const operationId = v.requiredInteger('operationId', input.operationId, 'Surgery', { min: 1 });
   const itemId = v.requiredInteger('itemId', input.itemId, 'Item', { min: 1 });
   const quantity =
     input.quantity == null || v.text(input.quantity) === ''
@@ -637,7 +700,7 @@ export function changeLineQuantityAction(
   input: ChangeLineInput,
 ): ActionResult<OperationMutationResult> {
   const v = new FieldValidator();
-  const operationId = v.requiredInteger('operationId', input.operationId, 'Operation', { min: 1 });
+  const operationId = v.requiredInteger('operationId', input.operationId, 'Surgery', { min: 1 });
   const lineId = v.requiredInteger('lineId', input.lineId, 'Item line', { min: 1 });
   const quantity = v.requiredInteger('quantity', input.quantity, 'Quantity', { min: 0 });
   const clientEventId = requireClientEventId(v, input.clientEventId);
@@ -677,7 +740,7 @@ export function undoLastScanAction(
   input: UndoInput,
 ): ActionResult<OperationMutationResult> {
   const v = new FieldValidator();
-  const operationId = v.requiredInteger('operationId', input.operationId, 'Operation', { min: 1 });
+  const operationId = v.requiredInteger('operationId', input.operationId, 'Surgery', { min: 1 });
   const clientEventId = requireClientEventId(v, input.clientEventId);
   if (v.hasErrors) return failFields(v.errors);
 
@@ -755,7 +818,7 @@ export function voidOperationAction(
   operationId: number,
   reason?: RawFormValue,
 ): ActionResult<VoidedOperation> {
-  if (!isAdmin(actor)) return forbidden('void operation');
+  if (!isAdmin(actor)) return forbidden('void surgery');
 
   const v = new FieldValidator();
   // §9.3: причина необязательна. Пациентских данных в ней быть не может (§18.3) —
@@ -781,7 +844,7 @@ export function deleteVoidedOperationAction(
   actor: Actor,
   operationId: number,
 ): ActionResult<DeletedOperation> {
-  if (!isAdmin(actor)) return forbidden('delete voided operation');
+  if (!isAdmin(actor)) return forbidden('delete voided surgery');
   return runAction(() => deleteVoidedOperation(db, actor, operationId));
 }
 

@@ -40,7 +40,7 @@ export default async function SettingsPage() {
       <Card className="mb-6 p-5 sm:p-6">
         <h2 className="text-xl font-semibold">Doctors</h2>
         <p className="mt-1 max-w-xl text-base text-slate-600">
-          Add or remove doctors and set the two-letter code that prefixes their operation codes,
+          Add or remove doctors and set the two-letter code that prefixes their surgery codes,
           for example CH00001.
         </p>
         <ButtonLink href="/settings/doctors" variant="secondary" className="mt-4">

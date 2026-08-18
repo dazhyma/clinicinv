@@ -277,6 +277,10 @@ export const operations = sqliteTable(
     status: text('status', { enum: OPERATION_STATUSES }).notNull(),
     /** Только значение из закрытого справочника обобщённых категорий (§2.4, Q-2). */
     procedureCategory: text('procedure_category'),
+    /** AES-256-GCM ciphertext; Patient ID никогда не хранится открытым текстом. */
+    patientIdEncrypted: text('patient_id_encrypted'),
+    /** Keyed HMAC для точного поиска без расшифровки всей таблицы. */
+    patientIdLookup: text('patient_id_lookup'),
     /** Фиксируется в момент Finish and Lock (§11.5). Целые центы. */
     totalCostSnapshotCents: integer('total_cost_snapshot_cents'),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
@@ -300,6 +304,7 @@ export const operations = sqliteTable(
     index('ix_operations_status_created').on(t.status, t.createdAt),
     index('ix_operations_created').on(t.createdAt),
     index('ix_operations_category').on(t.procedureCategory),
+    index('ix_operations_patient_id_lookup').on(t.patientIdLookup),
   ],
 );
 

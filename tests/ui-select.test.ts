@@ -44,8 +44,11 @@ describe('shared Select UI contract', () => {
     expect(itemForm).toContain('<datalist id="location-options">');
   });
 
-  it('uses the shared compact action row for Past Operations filters', () => {
-    const operations = readFileSync(join(root, 'src/app/operations/page.tsx'), 'utf8');
+  it('uses the shared compact action row for Past Surgeries filters', () => {
+    const operations = readFileSync(
+      join(root, 'src/app/operations/_components/past-surgeries.tsx'),
+      'utf8',
+    );
 
     expect(operations).toContain('<FilterActions>');
     expect(operations).toContain('Apply Filters');

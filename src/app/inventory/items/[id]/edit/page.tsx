@@ -44,7 +44,7 @@ export default async function EditItemPage({
     <main className="app-shell flex max-w-4xl flex-col">
       <AppHeader
         title={item.name}
-        subtitle="Editing an item never changes finished operations."
+        subtitle="Editing an item never changes finished surgeries."
         backHref={itemsReturnPath((await searchParams).returnTo)}
         backLabel="Back to Items"
         account={{ username: account.username, role: account.role }}

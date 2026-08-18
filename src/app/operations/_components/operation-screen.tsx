@@ -435,18 +435,18 @@ export function OperationScreen({
       }
       showFeedback({
         tone: 'ok',
-        title: `Operation ${result.data.caseCode} is finished`,
+        title: `Surgery ${result.data.caseCode} is finished`,
         detail: 'Quantities and costs are locked.',
         warnings: [],
       });
       router.push(`/operations?finished=${encodeURIComponent(result.data.caseCode)}`);
     } catch {
       setUnsynced((count) => count + 1);
-      setFinishError('The operation was not finished and is still Active — check connection.');
+      setFinishError('The surgery was not finished and is still Active — check connection.');
       showFeedback({
         tone: 'error',
         title: 'Changes are not synced — check connection',
-        detail: 'The operation was not finished and is still Active.',
+        detail: 'The surgery was not finished and is still Active.',
         warnings: [],
       });
     } finally {
@@ -537,6 +537,9 @@ export function OperationScreen({
         <div>
           <p className="text-base text-slate-600">Case</p>
           <p className="font-mono text-3xl font-bold tracking-wider">{state.caseCode}</p>
+          <p className="mt-1 text-lg text-slate-700">
+            Patient ID: {state.patientId ?? 'Not provided'}
+          </p>
           {state.procedureCategory ? (
             <p className="text-base text-slate-600">{state.procedureCategory}</p>
           ) : null}
@@ -602,7 +605,7 @@ export function OperationScreen({
 
       {/* --- Список добавленных позиций (§7.4, §7.7) --- */}
       <section className="app-card p-4">
-        <h2 className="mb-3 text-xl font-semibold">Items in this operation</h2>
+        <h2 className="mb-3 text-xl font-semibold">Items in this surgery</h2>
         {displayLines.length === 0 ? (
           <p className="text-lg text-slate-600">Nothing scanned yet.</p>
         ) : (
@@ -681,10 +684,10 @@ export function OperationScreen({
           }
           className="w-full rounded-xl bg-slate-900 px-6 py-5 text-2xl font-bold text-white"
         >
-          Finish Operation
+          Finish Surgery
         </button>
         <p className="mt-2 text-base text-slate-600">
-          The operation stays Active until you confirm. Nothing finishes on a timer.
+          The surgery stays Active until you confirm. Nothing finishes on a timer.
         </p>
       </section>
 
@@ -701,7 +704,7 @@ export function OperationScreen({
 
       <p className="text-center">
         <Link href="/operations" className="text-lg text-slate-600 underline underline-offset-4">
-          All operations
+          All surgeries
         </Link>
       </p>
 
@@ -724,10 +727,10 @@ export function OperationScreen({
           <div
             role="dialog"
             aria-modal="true"
-            aria-label="Finish this operation?"
+            aria-label="Finish this surgery?"
             className="modal-panel app-card w-full max-w-lg p-6 shadow-[var(--shadow-raised)]"
           >
-            <h2 className="text-2xl font-semibold">Finish this operation?</h2>
+            <h2 className="text-2xl font-semibold">Finish this surgery?</h2>
             <p className="mt-3 text-lg text-slate-700">Quantities and costs will be locked.</p>
 
             {/* §14.4: причина отказа стоит рядом с кнопкой, а не только в

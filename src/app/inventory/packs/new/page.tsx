@@ -1,5 +1,5 @@
 import { listItemsForActor } from '@/actions/items';
-import { requirePageAdmin } from '@/auth/guards';
+import { requirePage } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import { AppHeader } from '../../../_components/app-header';
 import { PackForm } from '../../_components/pack-form';
@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic';
  * (§6.3, §18.6) — в форме их нет.
  */
 export default async function NewPackPage() {
-  const { account, actor } = await requirePageAdmin();
+  const { account, actor } = await requirePage();
   const { items } = listItemsForActor(getDb(), actor, {});
 
   return (

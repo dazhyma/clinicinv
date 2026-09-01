@@ -58,21 +58,20 @@ function buildScenario() {
 
 // --- §3.2, §18.22 -----------------------------------------------------------
 
-describe('Staff получает отказ по каждому Admin-действию с паками', () => {
-  it('Add New Pack отклоняется, ни один пак не создан', () => {
+describe('Staff создаёт паки, но не получает права их редактировать', () => {
+  it('Add New Pack доступен Staff', () => {
     const ctx = setupTestDb();
     const item = makeItem(ctx, FIXTURES.gauze);
 
-    const result = expectFailure(
+    const result = expectSuccess<{ internalCode: string }>(
       createPackAction(ctx.db, ctx.staff, {
         name: 'Staff Pack',
         components: [{ itemId: String(item.id), quantity: '2' }],
       }),
     );
 
-    expect(result.code).toBe('FORBIDDEN');
-    expect(result.error).toMatch(/permission/i);
-    expect(listPacks(ctx.db, { includeInactive: true })).toHaveLength(0);
+    expect(result.data.internalCode).toMatch(/^PCK-/);
+    expect(listPacks(ctx.db, { includeInactive: true })).toHaveLength(1);
   });
 
   it('Edit Pack отклоняется: название, заметки, статус и состав не изменились', () => {
@@ -100,12 +99,12 @@ describe('Staff получает отказ по каждому Admin-дейст
     expect(after.costCents).toBe(before.costCents);
   });
 
-  it('отказ приходит до валидации: пустая форма Staff даёт FORBIDDEN, а не список полей', () => {
+  it('пустая форма Staff проходит обычную валидацию', () => {
     const ctx = setupTestDb();
 
     const result = expectFailure(createPackAction(ctx.db, ctx.staff, {}));
-    expect(result.code).toBe('FORBIDDEN');
-    expect(result.fieldErrors).toBeUndefined();
+    expect(result.code).toBe('VALIDATION_FAILED');
+    expect(result.fieldErrors?.name).toBeDefined();
   });
 
   it('Staff может читать список паков и их состав (§3.2)', () => {
@@ -244,7 +243,7 @@ describe('Внутренний код пака уникален и постоя�
     expect(codes.size).toBe(5);
   });
 
-  it('редактирование названия, фото, состава, заметок и статуса код не меняет', () => {
+  it('редактирование названия, состава, заметок и статуса код не меняет', () => {
     const { ctx, mask, packId, code } = buildScenario();
     const before = getPackForActor(ctx.db, ctx.admin, packId)!;
 
@@ -253,7 +252,6 @@ describe('Внутренний код пака уникален и постоя�
         name: 'Completely different name',
         notes: 'new notes',
         status: 'inactive',
-        photoUrl: '/api/photos/abcdef0123456789abcdef0123456789',
         components: [{ itemId: String(mask.id), quantity: '7' }],
       }),
     );

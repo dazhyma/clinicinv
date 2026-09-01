@@ -66,7 +66,6 @@ ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0 \
     DATABASE_FILE=/app/data/clinic.db \
-    UPLOADS_DIR=/app/data/uploads \
     BACKUP_DIR=/app/data/backups
 
 COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
@@ -83,11 +82,8 @@ COPY --chown=node:node drizzle ./drizzle
 COPY --chown=node:node docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Каталог данных — точка монтирования тома: база SQLite (+ WAL) и фотографии
-# предметов (§13, §15 — файлы лежат вне public/ и отдаются только маршрутом
-# с проверкой сессии). Владелец задан ДО объявления тома: пустой именованный
-# том наследует права этого каталога.
-RUN mkdir -p /app/data/uploads /app/data/backups && chown -R node:node /app/data
+# Каталог данных — точка монтирования тома для SQLite (+ WAL) и backups.
+RUN mkdir -p /app/data/backups && chown -R node:node /app/data
 VOLUME ["/app/data"]
 
 USER node

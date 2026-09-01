@@ -17,6 +17,8 @@ import {
   changeLineQuantityServerAction,
   finishOperationServerAction,
   scanBarcodeAction,
+  startOrTimerServerAction,
+  stopOrTimerServerAction,
   undoLastScanServerAction,
 } from '../actions';
 import { playScanSound } from './scan-sound';
@@ -76,6 +78,7 @@ interface DisplayLine {
   unitCostFormatted?: string;
   lineTotalFormatted?: string;
   syncing: boolean;
+  trackingMethod: 'standard' | 'liquid';
 }
 
 type FeedbackTone = 'pending' | 'ok' | 'error';
@@ -97,6 +100,14 @@ const TONE_STYLES: Record<FeedbackTone, string> = {
   error: 'bg-red-100 text-red-950 ring-red-400',
 };
 
+function formatDuration(milliseconds: number): string {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remaining = seconds % 60;
+  return [hours, minutes, remaining].map((value) => String(value).padStart(2, '0')).join(':');
+}
+
 export function OperationScreen({
   initialState,
   soundEnabled,
@@ -117,6 +128,14 @@ export function OperationScreen({
   const [finishOpen, setFinishOpen] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
+  const [timerBusy, setTimerBusy] = useState(false);
+  const [clockNow, setClockNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!state.orStartedAtMs || state.orEndedAtMs) return;
+    const timer = window.setInterval(() => setClockNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [state.orEndedAtMs, state.orStartedAtMs]);
 
   const scannerRef = useRef<BarcodeCaptureHandle>(null);
   const finishButtonRef = useRef<HTMLButtonElement>(null);
@@ -323,6 +342,7 @@ export function OperationScreen({
       known: BarcodeConfirmationView,
       _source: BarcodeScanSource,
       clientEventId: string,
+      amountUsedMl?: string,
     ): Promise<BarcodeConfirmOutcome> => {
       const optimisticLines: OptimisticLine[] =
         known.kind === 'pack'
@@ -331,7 +351,7 @@ export function OperationScreen({
               itemId: component.itemId,
               name: component.name,
               unitOfMeasurement: component.unitOfMeasurement,
-              quantity: component.quantity,
+              quantity: component.trackingMethod === 'liquid' ? (component.liquidAmountCentiml ?? 0) / 100 : component.quantity,
               packName: known.name,
             }))
           : [
@@ -340,7 +360,7 @@ export function OperationScreen({
                 itemId: known.id,
                 name: known.name,
                 unitOfMeasurement: known.unitOfMeasurement ?? '',
-                quantity: 1,
+                quantity: known.trackingMethod === 'liquid' ? Number(amountUsedMl ?? 0) : 1,
                 packName: null,
               },
             ];
@@ -359,6 +379,7 @@ export function OperationScreen({
             operationId: state.id,
             barcode: known.barcode,
             clientEventId,
+            amountUsedMl,
           }),
       });
 
@@ -420,13 +441,13 @@ export function OperationScreen({
    *  - успех отмечается баннером ДО перехода: если переход почему-то не
    *    состоится, экран всё равно не окажется в неопределённом состоянии.
    */
-  async function confirmFinish() {
+  async function confirmFinish(stopRunningTimer = false) {
     if (finishingRef.current) return;
     finishingRef.current = true;
     setFinishing(true);
     setFinishError(null);
     try {
-      const result = await finishOperationServerAction(state.id);
+      const result = await finishOperationServerAction(state.id, stopRunningTimer);
       if (!result.ok) {
         setFinishError(result.error);
         showFeedback({ tone: 'error', title: result.error, warnings: [] });
@@ -466,12 +487,13 @@ export function OperationScreen({
         name: line.name,
         internalCode: line.internalCode,
         unitOfMeasurement: line.unitOfMeasurement,
-        quantity: overrides[line.id] ?? line.quantity,
         packName: line.sourcePackName,
         fromPack: line.sourceType === 'pack',
         unitCostFormatted: line.unitCostFormatted,
         lineTotalFormatted: line.lineTotalFormatted,
         syncing: overrides[line.id] !== undefined,
+        trackingMethod: line.trackingMethod,
+        quantity: line.trackingMethod === 'liquid' ? (line.amountUsedCentiml ?? 0) / 100 : (overrides[line.id] ?? line.quantity),
       }))
       .filter((line) => line.quantity > 0);
 
@@ -499,6 +521,7 @@ export function OperationScreen({
             packName: optimistic.packName,
             fromPack: optimistic.packName != null,
             syncing: true,
+            trackingMethod: optimistic.unitOfMeasurement === 'ml' ? 'liquid' : 'standard',
           });
         }
       }
@@ -560,6 +583,22 @@ export function OperationScreen({
 
       {/* --- Индикатор сохранения и связи (§7.4, §8.4, §14.4) --- */}
       <SyncIndicator offline={offline} saving={savingCount} unsynced={unsynced} />
+
+      <section className="app-card p-4">
+        <h2 className="text-xl font-semibold">OR Time</h2>
+        {!state.orStartedAtMs ? (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3"><p className="text-lg">Not started</p>
+            <button type="button" disabled={timerBusy} onClick={async () => { setTimerBusy(true); const result = await startOrTimerServerAction(state.id); if (result.ok) setState(result.data); else showFeedback({ tone: 'error', title: result.error, warnings: [] }); setTimerBusy(false); }}
+              className="rounded-xl bg-slate-900 px-6 py-3 font-semibold text-white">Start OR Timer</button></div>
+        ) : (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3"><div>
+            <p>Started: {new Date(state.orStartedAtMs).toLocaleString(undefined, { timeZone: 'America/New_York' })}</p>
+            <p className="text-2xl font-bold">{formatDuration((state.orEndedAtMs ?? clockNow) - state.orStartedAtMs)}</p>
+            {state.orEndedAtMs ? <p>Ended: {new Date(state.orEndedAtMs).toLocaleString(undefined, { timeZone: 'America/New_York' })}</p> : null}
+          </div>{!state.orEndedAtMs ? <button type="button" disabled={timerBusy} onClick={async () => { setTimerBusy(true); const result = await stopOrTimerServerAction(state.id); if (result.ok) setState(result.data); else showFeedback({ tone: 'error', title: result.error, warnings: [] }); setTimerBusy(false); }}
+            className="rounded-xl border-2 border-slate-900 px-6 py-3 font-semibold">Stop OR Timer</button> : null}</div>
+        )}
+      </section>
 
       {/* --- Последний отсканированный предмет (§7.4, §7.5) --- */}
       <section
@@ -636,7 +675,7 @@ export function OperationScreen({
                   ) : null}
                 </div>
 
-                <div className="flex items-center gap-2">
+                {line.trackingMethod === 'liquid' ? <p className="text-2xl font-bold">{line.quantity.toFixed(2)} ml</p> : <div className="flex items-center gap-2">
                   <button
                     type="button"
                     aria-label={`Decrease ${line.name}`}
@@ -665,7 +704,7 @@ export function OperationScreen({
                   >
                     Remove
                   </button>
-                </div>
+                </div>}
               </li>
             ))}
           </ul>
@@ -730,8 +769,8 @@ export function OperationScreen({
             aria-label="Finish this surgery?"
             className="modal-panel app-card w-full max-w-lg p-6 shadow-[var(--shadow-raised)]"
           >
-            <h2 className="text-2xl font-semibold">Finish this surgery?</h2>
-            <p className="mt-3 text-lg text-slate-700">Quantities and costs will be locked.</p>
+            <h2 className="text-2xl font-semibold">{state.orStartedAtMs && !state.orEndedAtMs ? 'OR timer is still running' : 'Finish this surgery?'}</h2>
+            <p className="mt-3 text-lg text-slate-700">{state.orStartedAtMs && !state.orEndedAtMs ? 'Stop the timer before finishing this surgery.' : 'Quantities and costs will be locked.'}</p>
 
             {/* §14.4: причина отказа стоит рядом с кнопкой, а не только в
                 баннере наверху экрана, который в этот момент вне окна. */}
@@ -754,10 +793,10 @@ export function OperationScreen({
                 type="button"
                 ref={finishButtonRef}
                 disabled={finishing}
-                onClick={confirmFinish}
+                onClick={() => confirmFinish(Boolean(state.orStartedAtMs && !state.orEndedAtMs))}
                 className="rounded-xl bg-slate-900 px-6 py-4 text-lg font-semibold text-white disabled:opacity-60"
               >
-                {finishing ? 'Locking…' : 'Finish and Lock'}
+                {finishing ? 'Locking…' : state.orStartedAtMs && !state.orEndedAtMs ? 'Stop Timer & Finish Surgery' : 'Finish and Lock'}
               </button>
             </div>
           </div>

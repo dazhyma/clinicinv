@@ -17,7 +17,6 @@ import {
   scanForCountServerAction,
 } from '../count/actions';
 import { useUnsavedChanges } from '../../_components/use-unsaved-changes';
-import { ItemPhoto } from '../../_components/item-photo';
 
 /**
  * Экран инвентаризации (§5.10).
@@ -50,6 +49,8 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
   const [state, setState] = useState(initialState);
   const [target, setTarget] = useState<CountScanTargetView | null>(null);
   const [countedInput, setCountedInput] = useState('');
+  const [unopenedInput, setUnopenedInput] = useState('');
+  const [openMlInput, setOpenMlInput] = useState('');
   const [feedback, setFeedback] = useState<{ tone: Tone; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -59,7 +60,11 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
   const returnToCameraRef = useRef(false);
   const hasUnsavedQuantity =
     target !== null &&
-    countedInput !== (target.countedQuantity == null ? '' : String(target.countedQuantity));
+    (target.trackingMethod === 'liquid'
+      ? unopenedInput !==
+          (target.countedUnopenedVials == null ? '' : String(target.countedUnopenedVials)) ||
+        openMlInput !== (target.countedOpenVialMl ?? '0')
+      : countedInput !== (target.countedQuantity == null ? '' : String(target.countedQuantity)));
   useUnsavedChanges(hasUnsavedQuantity);
 
   // --- Шаг 2: скан предмета -------------------------------------------------
@@ -68,6 +73,8 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
     returnToCameraRef.current = returnToCamera;
     setTarget(item);
     setCountedInput(item.countedQuantity != null ? String(item.countedQuantity) : '');
+    setUnopenedInput(item.countedUnopenedVials != null ? String(item.countedUnopenedVials) : '');
+    setOpenMlInput(item.countedOpenVialMl ?? '0');
     setFeedback({
       tone: 'ok',
       text: `${item.name} — expected ${item.expectedQuantity} ${item.unitOfMeasurement}`,
@@ -114,10 +121,14 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
   async function saveCountedQuantity() {
     if (!target) return;
     const counted = Number(countedInput);
-    if (countedInput.trim() === '' || !Number.isSafeInteger(counted) || counted < 0) {
+    const countedUnopened = Number(unopenedInput);
+    if (target.trackingMethod === 'standard' && (countedInput.trim() === '' || !Number.isSafeInteger(counted) || counted < 0)) {
       setFeedback({ tone: 'error', text: 'Enter the counted quantity as a whole number (0 or more)' });
       quantityRef.current?.focus();
       return;
+    }
+    if (target.trackingMethod === 'liquid' && (unopenedInput.trim() === '' || !Number.isSafeInteger(countedUnopened) || countedUnopened < 0 || !/^\d+(?:\.\d{1,2})?$/.test(openMlInput))) {
+      setFeedback({ tone: 'error', text: 'Enter unopened vials and open-vial ml (at most 2 decimal places)' }); return;
     }
 
     setBusy(true);
@@ -125,7 +136,9 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
       const result = await recordCountLineServerAction({
         countId: state.id,
         itemId: target.itemId,
-        countedQuantity: counted,
+        countedQuantity: target.trackingMethod === 'liquid' ? 0 : counted,
+        countedUnopenedVials: target.trackingMethod === 'liquid' ? countedUnopened : undefined,
+        countedOpenVialMl: target.trackingMethod === 'liquid' ? openMlInput : undefined,
       });
       if (!result.ok) {
         setFeedback({ tone: 'error', text: result.error });
@@ -183,8 +196,20 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
     }
   }
 
-  const difference =
-    target && countedInput.trim() !== '' && Number.isSafeInteger(Number(countedInput))
+  const liquidDifference = (() => {
+    if (target?.trackingMethod !== 'liquid' || target.liquidVolumePerVialMl == null) return null;
+    if (
+      unopenedInput.trim() === '' ||
+      !Number.isSafeInteger(Number(unopenedInput)) ||
+      !/^\d+(?:\.\d{1,2})?$/.test(openMlInput)
+    ) return null;
+    const countedMl = Number(unopenedInput) * Number(target.liquidVolumePerVialMl) + Number(openMlInput);
+    const expectedMl = target.expectedQuantity / 100;
+    return Number((countedMl - expectedMl).toFixed(2));
+  })();
+  const difference = target?.trackingMethod === 'liquid'
+    ? liquidDifference
+    : target && countedInput.trim() !== '' && Number.isSafeInteger(Number(countedInput))
       ? Number(countedInput) - target.expectedQuantity
       : null;
 
@@ -215,7 +240,6 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
       {target ? (
         <section className="rounded-2xl border-2 border-slate-900 bg-white p-4">
           <div className="flex items-center gap-4">
-            <ItemPhoto photoUrl={target.photoUrl} name={target.name} size={72} />
             <div className="min-w-0">
               <p className="text-xl font-semibold">{target.name}</p>
               <p className="font-mono text-base text-slate-600">{target.internalCode}</p>
@@ -231,7 +255,7 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
             <div>
               <p className="text-base text-slate-600">Expected</p>
               <p className="text-3xl font-bold">
-                {target.expectedQuantity}
+                {target.trackingMethod === 'liquid' ? `${target.expectedUnopenedVials} unopened + ${target.expectedOpenVialMl} ml open` : target.expectedQuantity}
                 <span className="ml-1 text-base font-normal text-slate-600">
                   {target.unitOfMeasurement}
                 </span>
@@ -242,7 +266,10 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
               <label htmlFor="counted" className="text-base font-medium text-slate-700">
                 Counted on the shelf
               </label>
-              <input
+              {target.trackingMethod === 'liquid' ? <div className="grid gap-2 sm:grid-cols-2">
+                <input ref={quantityRef} type="number" inputMode="numeric" min={0} step={1} value={unopenedInput} onChange={event => setUnopenedInput(event.currentTarget.value)} placeholder="Unopened vials" className="mt-1 w-full rounded-xl border-2 border-slate-400 px-4 py-4 text-xl" />
+                <input type="number" inputMode="decimal" min={0} step="0.01" value={openMlInput} onChange={event => setOpenMlInput(event.currentTarget.value)} placeholder="Open vial ml" className="mt-1 w-full rounded-xl border-2 border-slate-400 px-4 py-4 text-xl" />
+              </div> : <input
                 id="counted"
                 ref={quantityRef}
                 type="number"
@@ -258,7 +285,7 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
                   }
                 }}
                 className="mt-1 w-full rounded-xl border-2 border-slate-400 px-4 py-4 text-2xl"
-              />
+              />}
             </div>
 
             <div>
@@ -272,7 +299,7 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
                       : 'text-red-800'
                 }`}
               >
-                {difference == null ? '—' : difference > 0 ? `+${difference}` : difference}
+                {difference == null ? '—' : `${difference > 0 ? '+' : ''}${difference}${target.trackingMethod === 'liquid' ? ' ml' : ''}`}
               </p>
             </div>
           </div>
@@ -326,7 +353,9 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
                   <p className="font-mono text-base text-slate-600">{line.internalCode}</p>
                 </div>
                 <p className="text-lg text-slate-700">
-                  Expected {line.expectedQuantity} · Counted {line.countedQuantity}
+                  {line.trackingMethod === 'liquid'
+                    ? `Expected ${line.expectedUnopenedVials} unopened + ${line.expectedOpenVialMl} ml open · Counted ${line.countedUnopenedVials} unopened + ${line.countedOpenVialMl} ml open`
+                    : `Expected ${line.expectedQuantity} · Counted ${line.countedQuantity}`}
                 </p>
                 <p
                   className={`min-w-16 text-right text-2xl font-bold ${
@@ -337,7 +366,9 @@ export function CountScreen({ initialState }: { initialState: InventoryCountStat
                         : 'text-red-800'
                   }`}
                 >
-                  {line.difference > 0 ? `+${line.difference}` : line.difference}
+                  {line.trackingMethod === 'liquid'
+                    ? `${line.difference > 0 ? '+' : ''}${(line.difference / 100).toFixed(2)} ml`
+                    : line.difference > 0 ? `+${line.difference}` : line.difference}
                 </p>
               </li>
             ))}

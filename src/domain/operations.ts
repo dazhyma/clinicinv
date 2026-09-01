@@ -23,10 +23,15 @@ import type { AppDatabase, DbLike, Tx } from '@/db/client';
 import {
   inventoryMovements,
   items,
+  liquidInventoryMovements,
+  manufacturers,
+  operationCostAdjustments,
   operationEvents,
   operationItems,
+  operationTimeAdjustments,
   operations,
   packs,
+  surgeryTypes,
   type ItemRow,
   type OperationItemRow,
   type OperationRow,
@@ -56,6 +61,14 @@ import {
 import { getPackComposition, type PackComponent } from './packs';
 import { assertNonNegativeQuantity, assertPositiveQuantity } from './quantity';
 import { getIntSetting, getNegativeStockMode, SETTING_KEYS } from './settings';
+import { applyLiquidMovement } from './liquid-movements';
+import {
+  consumeLiquidStock,
+  liquidLineTotalCents,
+  returnLiquidToStock,
+  standardCostToMicros,
+  vialCostToPerMlMicros,
+} from './liquid';
 
 // --- Типы результатов -------------------------------------------------------
 
@@ -71,13 +84,14 @@ export interface AddToOperationResult {
   applied: boolean;
   warnings: OperationWarning[];
   /** Остатки затронутых предметов после операции. */
-  stockAfter: { itemId: number; quantity: number }[];
+  stockAfter: { itemId: number; quantity: number; totalVolumeCentiml?: number }[];
 }
 
 interface UndoPayloadLine {
   operationItemId: number;
   itemId: number;
   quantity: number;
+  amountUsedCentiml?: number;
 }
 
 // --- Вспомогательное --------------------------------------------------------
@@ -250,6 +264,7 @@ function upsertOperationLine(
   quantity: number,
   sourceType: SourceType,
   sourcePackId: number | null,
+  addedAfterFinish = false,
 ): OperationItemRow {
   const now = new Date();
   const existing = tx
@@ -264,6 +279,8 @@ function upsertOperationLine(
           ? isNull(operationItems.sourcePackId)
           : eq(operationItems.sourcePackId, sourcePackId),
         eq(operationItems.unitCostSnapshotCents, item.currentUnitCostCents),
+        eq(operationItems.trackingMethodSnapshot, 'standard'),
+        eq(operationItems.addedAfterFinish, addedAfterFinish),
       ),
     )
     .get();
@@ -294,15 +311,79 @@ function upsertOperationLine(
       itemNameSnapshot: item.name,
       internalCodeSnapshot: item.internalCode,
       referenceNumberSnapshot: item.referenceNumber,
+      manufacturerNameSnapshot: itemManufacturerName(tx, item),
       unitOfMeasurementSnapshot: item.unitOfMeasurement,
       quantity,
       unitCostSnapshotCents: item.currentUnitCostCents,
+      appliedCostPerMeasureMicros: standardCostToMicros(item.currentUnitCostCents),
+      trackingMethodSnapshot: 'standard',
       lineTotalCents: lineTotalCents(quantity, item.currentUnitCostCents),
+      addedAfterFinish,
+      addedAfterFinishAt: addedAfterFinish ? now : null,
       createdAt: now,
       updatedAt: now,
     })
     .returning()
     .get();
+}
+
+function itemManufacturerName(tx: DbLike, item: ItemRow): string | null {
+  if (!item.manufacturerId) return null;
+  return tx.select({ name: manufacturers.name }).from(manufacturers)
+    .where(eq(manufacturers.id, item.manufacturerId)).get()?.name ?? null;
+}
+
+function upsertLiquidOperationLine(
+  tx: DbLike,
+  operationId: number,
+  item: ItemRow,
+  amountUsedCentiml: number,
+  sourceType: SourceType,
+  sourcePackId: number | null,
+  addedAfterFinish = false,
+): OperationItemRow {
+  const perVial = item.liquidVolumePerVialCentiml;
+  if (!perVial) throw errors.validationFailed('Liquid item has no volume per vial');
+  const costMicros = vialCostToPerMlMicros(item.currentUnitCostCents, perVial);
+  const now = new Date();
+  const existing = tx.select().from(operationItems).where(and(
+    eq(operationItems.operationId, operationId),
+    eq(operationItems.itemId, item.id),
+    eq(operationItems.sourceType, sourceType),
+    sourcePackId === null ? isNull(operationItems.sourcePackId) : eq(operationItems.sourcePackId, sourcePackId),
+    eq(operationItems.trackingMethodSnapshot, 'liquid'),
+    eq(operationItems.appliedCostPerMeasureMicros, costMicros),
+    eq(operationItems.addedAfterFinish, addedAfterFinish),
+  )).get();
+  if (existing) {
+    const nextAmount = (existing.amountUsedCentiml ?? 0) + amountUsedCentiml;
+    return tx.update(operationItems).set({
+      amountUsedCentiml: nextAmount,
+      lineTotalCents: liquidLineTotalCents(nextAmount, costMicros),
+      updatedAt: now,
+    }).where(eq(operationItems.id, existing.id)).returning().get();
+  }
+  return tx.insert(operationItems).values({
+    operationId,
+    itemId: item.id,
+    sourceType,
+    sourcePackId,
+    itemNameSnapshot: item.name,
+    internalCodeSnapshot: item.internalCode,
+    referenceNumberSnapshot: item.referenceNumber,
+    manufacturerNameSnapshot: itemManufacturerName(tx, item),
+    trackingMethodSnapshot: 'liquid',
+    unitOfMeasurementSnapshot: 'ml',
+    quantity: 0,
+    amountUsedCentiml,
+    unitCostSnapshotCents: item.currentUnitCostCents,
+    appliedCostPerMeasureMicros: costMicros,
+    lineTotalCents: liquidLineTotalCents(amountUsedCentiml, costMicros),
+    addedAfterFinish,
+    addedAfterFinishAt: addedAfterFinish ? now : null,
+    createdAt: now,
+    updatedAt: now,
+  }).returning().get();
 }
 
 function warnOnLargeQuantity(
@@ -351,6 +432,7 @@ export interface StartOperationInput {
   doctorId: number;
   /** Только цифры; зашифрованная строка сохраняет ведущие нули (D-72). */
   patientId: string;
+  surgeryTypeId?: number;
   /** Только значение из закрытого справочника обобщённых категорий (§2.4, Q-2). */
   procedureCategory?: string | null;
 }
@@ -388,6 +470,11 @@ export function startOperation(
 
   return runInTransaction(db, (tx) => {
     const doctor = loadSelectableDoctor(tx, input.doctorId);
+    const surgeryType = input.surgeryTypeId == null ? null : tx.select().from(surgeryTypes)
+      .where(and(eq(surgeryTypes.id, input.surgeryTypeId), eq(surgeryTypes.status, 'active'))).get();
+    if (input.surgeryTypeId != null && !surgeryType) {
+      throw errors.validationFailed('Select an active Surgery Type');
+    }
     assertRoomAvailable(tx, doctor);
     const now = new Date();
 
@@ -414,6 +501,8 @@ export function startOperation(
           doctorNameSnapshot: doctor.lastName,
           status: 'Active',
           procedureCategory: input.procedureCategory?.trim() || null,
+          surgeryTypeId: surgeryType?.id ?? null,
+          surgeryTypeNameSnapshot: surgeryType?.name ?? null,
           patientIdEncrypted: encryptPatientId(input.patientId),
           patientIdLookup: patientIdLookup(input.patientId),
           totalCostSnapshotCents: null,
@@ -504,6 +593,7 @@ export interface AddItemToOperationInput {
   itemId: number;
   /** Скан всегда даёт 1; ручное добавление может дать больше. */
   quantity?: number;
+  amountUsedCentiml?: number;
   /**
    * Идентификатор события, СГЕНЕРИРОВАННЫЙ КЛИЕНТОМ в момент скана и
    * неизменный при ретраях. Ключ, сгенерированный сервером, идемпотентности
@@ -521,7 +611,6 @@ export function addItemToOperation(
   input: AddItemToOperationInput,
 ): AddToOperationResult {
   assertAuthenticated(actor);
-  const quantity = assertPositiveQuantity(input.quantity ?? 1, 'Quantity');
   if (!input.clientEventId?.trim()) {
     throw errors.validationFailed('A client event id is required for every scan');
   }
@@ -535,6 +624,45 @@ export function addItemToOperation(
 
     const item = loadItemForScan(tx, input.itemId);
     const warnings: OperationWarning[] = [];
+    if (item.trackingMethod === 'liquid') {
+      const amount = input.amountUsedCentiml;
+      if (!Number.isSafeInteger(amount) || (amount ?? 0) <= 0) {
+        throw errors.validationFailed('Amount Used (ml) is required for a liquid item');
+      }
+      const perVial = item.liquidVolumePerVialCentiml!;
+      const next = consumeLiquidStock(
+        { unopenedVials: item.liquidUnopenedVials, openVialCentiml: item.liquidOpenVialCentiml },
+        perVial,
+        amount!,
+      );
+      const movement = applyLiquidMovement(tx, {
+        itemId: item.id,
+        movementType: 'used_in_operation',
+        next,
+        operationId: operation.id,
+        idempotencyKey: idempotencyKeys.operationScan(operation.id, input.clientEventId),
+        actorAccountId: actor.accountId,
+      });
+      if (!movement.created) return replayResult(tx, operation.id, [item.id]);
+      const line = upsertLiquidOperationLine(
+        tx, operation.id, item, amount!, input.sourceType ?? 'individual', input.sourcePackId ?? null,
+      );
+      tx.insert(operationEvents).values({
+        operationId: operation.id,
+        eventType: 'item_added',
+        clientEventId: input.clientEventId,
+        payloadJson: JSON.stringify({ lines: [{ operationItemId: line.id, itemId: item.id, quantity: 0, amountUsedCentiml: amount }] }),
+        undoable: true,
+        createdAt: new Date(),
+      }).run();
+      touchOperation(tx, operation.id);
+      return {
+        lines: [line], applied: true, warnings,
+        stockAfter: [{ itemId: item.id, quantity: 0, totalVolumeCentiml: movement.totalVolumeCentiml }],
+      };
+    }
+
+    const quantity = assertPositiveQuantity(input.quantity ?? 1, 'Quantity');
     checkStock(tx, item, quantity, warnings);
 
     const movement = applyMovement(tx, {
@@ -630,14 +758,45 @@ export function addPackToOperation(
     const warnings: OperationWarning[] = [];
     for (const component of composition) {
       if (component.item.status !== 'active') throw errors.itemInactive(component.item.name);
-      checkStock(tx, component.item, component.quantity, warnings);
+      if (component.item.trackingMethod === 'liquid') {
+        consumeLiquidStock(
+          { unopenedVials: component.item.liquidUnopenedVials, openVialCentiml: component.item.liquidOpenVialCentiml },
+          component.item.liquidVolumePerVialCentiml!,
+          component.liquidAmountCentiml!,
+        );
+      } else {
+        checkStock(tx, component.item, component.quantity, warnings);
+      }
     }
 
     const lines: OperationItemRow[] = [];
-    const stockAfter: { itemId: number; quantity: number }[] = [];
+    const stockAfter: { itemId: number; quantity: number; totalVolumeCentiml?: number }[] = [];
     const payloadLines: UndoPayloadLine[] = [];
 
     for (const component of composition) {
+      if (component.item.trackingMethod === 'liquid') {
+        const amount = component.liquidAmountCentiml!;
+        const perVial = component.item.liquidVolumePerVialCentiml!;
+        const next = consumeLiquidStock(
+          { unopenedVials: component.item.liquidUnopenedVials, openVialCentiml: component.item.liquidOpenVialCentiml },
+          perVial,
+          amount,
+        );
+        const movement = applyLiquidMovement(tx, {
+          itemId: component.item.id,
+          movementType: 'used_in_operation',
+          next,
+          operationId: operation.id,
+          idempotencyKey: idempotencyKeys.operationPackItem(operation.id, input.clientEventId, component.item.id),
+          actorAccountId: actor.accountId,
+        });
+        if (!movement.created) return replayResult(tx, operation.id, itemIds);
+        const line = upsertLiquidOperationLine(tx, operation.id, component.item, amount, 'pack', pack.id);
+        lines.push(line);
+        stockAfter.push({ itemId: component.item.id, quantity: 0, totalVolumeCentiml: movement.totalVolumeCentiml });
+        payloadLines.push({ operationItemId: line.id, itemId: component.item.id, quantity: 0, amountUsedCentiml: amount });
+        continue;
+      }
       const movement = applyMovement(tx, {
         itemId: component.item.id,
         movementType: 'used_in_operation',
@@ -726,6 +885,9 @@ export function setLineQuantity(
       )
       .get();
     if (!line) throw errors.operationLineNotFound();
+    if (line.trackingMethodSnapshot === 'liquid') {
+      throw errors.validationFailed('Liquid usage is edited in ml, not with unit quantity controls');
+    }
 
     if (findEventByClientId(tx, operation.id, input.clientEventId)) {
       return replayResult(tx, operation.id, [line.itemId]);
@@ -862,7 +1024,7 @@ export function undoLastScan(
     const payload = JSON.parse(event.payloadJson) as { lines?: UndoPayloadLine[] };
     const payloadLines = payload.lines ?? [];
 
-    const stockAfter: { itemId: number; quantity: number }[] = [];
+    const stockAfter: { itemId: number; quantity: number; totalVolumeCentiml?: number }[] = [];
     const remainingLines: OperationItemRow[] = [];
 
     for (const entry of payloadLines) {
@@ -871,6 +1033,34 @@ export function undoLastScan(
         .from(operationItems)
         .where(eq(operationItems.id, entry.operationItemId))
         .get();
+      if (entry.amountUsedCentiml && line?.trackingMethodSnapshot === 'liquid') {
+        const item = tx.select().from(items).where(eq(items.id, entry.itemId)).get();
+        if (!item?.liquidVolumePerVialCentiml) throw errors.itemNotFound(entry.itemId);
+        const returnAmount = Math.min(entry.amountUsedCentiml, line.amountUsedCentiml ?? 0);
+        if (returnAmount <= 0) continue;
+        const next = returnLiquidToStock(
+          { unopenedVials: item.liquidUnopenedVials, openVialCentiml: item.liquidOpenVialCentiml },
+          item.liquidVolumePerVialCentiml,
+          returnAmount,
+        );
+        const movement = applyLiquidMovement(tx, {
+          itemId: item.id,
+          movementType: 'returned_from_operation',
+          next,
+          operationId: operation.id,
+          idempotencyKey: idempotencyKeys.operationUndo(operation.id, event.id, entry.itemId),
+          actorAccountId: actor.accountId,
+        });
+        stockAfter.push({ itemId: item.id, quantity: 0, totalVolumeCentiml: movement.totalVolumeCentiml });
+        const remaining = (line.amountUsedCentiml ?? 0) - returnAmount;
+        if (remaining === 0) tx.delete(operationItems).where(eq(operationItems.id, line.id)).run();
+        else remainingLines.push(tx.update(operationItems).set({
+          amountUsedCentiml: remaining,
+          lineTotalCents: liquidLineTotalCents(remaining, line.appliedCostPerMeasureMicros!),
+          updatedAt: new Date(),
+        }).where(eq(operationItems.id, line.id)).returning().get());
+        continue;
+      }
       const returnQuantity = Math.min(entry.quantity, line?.quantity ?? 0);
       if (returnQuantity <= 0) continue;
 
@@ -946,6 +1136,184 @@ export function setProcedureCategory(
   });
 }
 
+export function startOrTimer(db: AppDatabase, actor: Actor, operationId: number): OperationRow {
+  assertAuthenticated(actor);
+  return runInTransaction(db, (tx) => {
+    const operation = loadActiveOperation(tx, operationId);
+    if (operation.orStartedAt) throw errors.validationFailed('OR timer has already been started');
+    const now = new Date();
+    const updated = tx.update(operations).set({ orStartedAt: now, updatedAt: now })
+      .where(and(eq(operations.id, operation.id), isNull(operations.orStartedAt))).returning().get();
+    if (!updated) throw errors.validationFailed('OR timer has already been started');
+    writeAudit(tx, { action: AUDIT_ACTIONS.operationTimerStarted, actorAccountId: actor.accountId,
+      actorRole: actor.role, entityType: 'operation', entityId: operation.id,
+      summary: `OR timer started for case ${displayCaseCode(operation)}` });
+    return updated;
+  });
+}
+
+export function stopOrTimer(db: AppDatabase, actor: Actor, operationId: number): OperationRow {
+  assertAuthenticated(actor);
+  return runInTransaction(db, (tx) => {
+    const operation = loadActiveOperation(tx, operationId);
+    if (!operation.orStartedAt) throw errors.validationFailed('OR timer has not been started');
+    if (operation.orEndedAt) throw errors.validationFailed('OR timer has already been stopped');
+    const now = new Date();
+    const updated = tx.update(operations).set({ orEndedAt: now, updatedAt: now })
+      .where(and(eq(operations.id, operation.id), isNull(operations.orEndedAt))).returning().get();
+    if (!updated) throw errors.validationFailed('OR timer has already been stopped');
+    writeAudit(tx, { action: AUDIT_ACTIONS.operationTimerStopped, actorAccountId: actor.accountId,
+      actorRole: actor.role, entityType: 'operation', entityId: operation.id,
+      summary: `OR timer stopped for case ${displayCaseCode(operation)}` });
+    return updated;
+  });
+}
+
+export function editOrTime(
+  db: AppDatabase,
+  actor: Actor,
+  operationId: number,
+  startedAt: Date,
+  endedAt: Date,
+  reason?: string | null,
+): OperationRow {
+  assertAdmin(actor, 'edit OR time');
+  if (endedAt.getTime() < startedAt.getTime()) throw errors.validationFailed('OR End Time cannot be before OR Start Time');
+  return runInTransaction(db, (tx) => {
+    const operation = getOperation(tx, operationId);
+    if (!operation) throw errors.operationNotFound(operationId);
+    if (operation.status === 'Active' && !operation.orEndedAt) throw errors.validationFailed('Stop the OR timer before editing its time');
+    const now = new Date();
+    tx.insert(operationTimeAdjustments).values({ operationId, oldStartedAt: operation.orStartedAt,
+      oldEndedAt: operation.orEndedAt, newStartedAt: startedAt, newEndedAt: endedAt,
+      reason: reason?.trim() || null, changedByAccountId: actor.accountId, changedAt: now }).run();
+    const updated = tx.update(operations).set({ orStartedAt: startedAt, orEndedAt: endedAt, updatedAt: now })
+      .where(eq(operations.id, operationId)).returning().get();
+    writeAudit(tx, { action: AUDIT_ACTIONS.operationTimeChanged, actorAccountId: actor.accountId,
+      actorRole: actor.role, entityType: 'operation', entityId: operation.id,
+      summary: `OR time corrected for case ${displayCaseCode(operation)}` });
+    return updated;
+  });
+}
+
+export function editFinishedLineCost(
+  db: AppDatabase,
+  actor: Actor,
+  operationId: number,
+  operationItemId: number,
+  costPerMeasureMicros: number,
+  reason?: string | null,
+): OperationItemRow {
+  assertAdmin(actor, 'edit applied cost');
+  if (!Number.isSafeInteger(costPerMeasureMicros) || costPerMeasureMicros < 0) {
+    throw errors.validationFailed('Applied cost must be a valid non-negative amount');
+  }
+  return runInTransaction(db, (tx) => {
+    const operation = getOperation(tx, operationId);
+    if (!operation) throw errors.operationNotFound(operationId);
+    if (operation.status !== 'Finished') throw errors.validationFailed('Applied cost can be edited only in a Finished surgery');
+    const line = tx.select().from(operationItems).where(and(eq(operationItems.id, operationItemId),
+      eq(operationItems.operationId, operationId))).get();
+    if (!line) throw errors.operationLineNotFound();
+    const oldMicros = line.appliedCostPerMeasureMicros ?? standardCostToMicros(line.unitCostSnapshotCents);
+    const newTotal = line.trackingMethodSnapshot === 'liquid'
+      ? liquidLineTotalCents(line.amountUsedCentiml!, costPerMeasureMicros)
+      : lineTotalCents(line.quantity, Math.round(costPerMeasureMicros / 10_000));
+    const newUnitCents = line.trackingMethodSnapshot === 'standard'
+      ? Math.round(costPerMeasureMicros / 10_000) : line.unitCostSnapshotCents;
+    const now = new Date();
+    tx.insert(operationCostAdjustments).values({ operationId, operationItemId,
+      oldCostPerMeasureMicros: oldMicros, newCostPerMeasureMicros: costPerMeasureMicros,
+      oldLineTotalCents: line.lineTotalCents, newLineTotalCents: newTotal,
+      reason: reason?.trim() || null, changedByAccountId: actor.accountId, changedAt: now }).run();
+    const updated = tx.update(operationItems).set({ appliedCostPerMeasureMicros: costPerMeasureMicros,
+      unitCostSnapshotCents: newUnitCents, lineTotalCents: newTotal, updatedAt: now })
+      .where(eq(operationItems.id, line.id)).returning().get();
+    const total = calculateOperationTotalCents(tx, operationId);
+    tx.update(operations).set({ totalCostSnapshotCents: total, updatedAt: now }).where(eq(operations.id, operationId)).run();
+    writeAudit(tx, { action: AUDIT_ACTIONS.operationAppliedCostChanged, actorAccountId: actor.accountId,
+      actorRole: actor.role, entityType: 'operation', entityId: operation.id,
+      summary: `Applied cost corrected for ${line.itemNameSnapshot} in case ${displayCaseCode(operation)}` });
+    return updated;
+  });
+}
+
+export function addItemToFinishedOperation(
+  db: AppDatabase,
+  actor: Actor,
+  input: { operationId: number; itemId: number; quantity?: number; amountUsedCentiml?: number; clientEventId: string },
+): AddToOperationResult {
+  assertAdmin(actor, 'add an item to a finished surgery');
+  return runInTransaction(db, (tx) => {
+    const operation = getOperation(tx, input.operationId);
+    if (!operation) throw errors.operationNotFound(input.operationId);
+    if (operation.status !== 'Finished') throw errors.validationFailed('Missing items can be added only to a Finished surgery');
+    if (findEventByClientId(tx, operation.id, input.clientEventId)) return replayResult(tx, operation.id, [input.itemId]);
+    const item = loadItemForScan(tx, input.itemId);
+    let line: OperationItemRow;
+    let stockAfter: AddToOperationResult['stockAfter'];
+    if (item.trackingMethod === 'liquid') {
+      const amount = input.amountUsedCentiml;
+      if (!Number.isSafeInteger(amount) || (amount ?? 0) <= 0) throw errors.validationFailed('Amount Used (ml) is required');
+      const next = consumeLiquidStock({ unopenedVials: item.liquidUnopenedVials,
+        openVialCentiml: item.liquidOpenVialCentiml }, item.liquidVolumePerVialCentiml!, amount!);
+      const movement = applyLiquidMovement(tx, { itemId: item.id, movementType: 'used_in_operation', next,
+        operationId: operation.id, idempotencyKey: `finished:${operation.id}:${input.clientEventId}:item:${item.id}`,
+        reason: 'Added after finish', actorAccountId: actor.accountId });
+      const costMicros = vialCostToPerMlMicros(item.currentUnitCostCents, item.liquidVolumePerVialCentiml!);
+      const existing = tx.select().from(operationItems).where(and(
+        eq(operationItems.operationId, operation.id), eq(operationItems.itemId, item.id),
+        eq(operationItems.sourceType, 'individual'), isNull(operationItems.sourcePackId),
+        eq(operationItems.trackingMethodSnapshot, 'liquid'),
+        eq(operationItems.appliedCostPerMeasureMicros, costMicros),
+      )).orderBy(operationItems.id).get();
+      if (existing) {
+        const nextAmount = (existing.amountUsedCentiml ?? 0) + amount!;
+        line = tx.update(operationItems).set({ amountUsedCentiml: nextAmount,
+          lineTotalCents: liquidLineTotalCents(nextAmount, costMicros), updatedAt: new Date() })
+          .where(eq(operationItems.id, existing.id)).returning().get();
+      } else {
+        line = upsertLiquidOperationLine(tx, operation.id, item, amount!, 'individual', null, true);
+      }
+      stockAfter = [{ itemId: item.id, quantity: 0, totalVolumeCentiml: movement.totalVolumeCentiml }];
+    } else {
+      const quantity = assertPositiveQuantity(input.quantity ?? 1, 'Quantity');
+      if (item.currentQuantity < quantity) throw errors.insufficientStock(item.currentQuantity, item.name);
+      const movement = applyMovement(tx, { itemId: item.id, movementType: 'used_in_operation', quantityDelta: -quantity,
+        operationId: operation.id, idempotencyKey: `finished:${operation.id}:${input.clientEventId}:item:${item.id}`,
+        reason: 'Added after finish', actorAccountId: actor.accountId });
+      const existing = tx.select().from(operationItems).where(and(
+        eq(operationItems.operationId, operation.id), eq(operationItems.itemId, item.id),
+        eq(operationItems.sourceType, 'individual'), isNull(operationItems.sourcePackId),
+        eq(operationItems.trackingMethodSnapshot, 'standard'),
+        eq(operationItems.unitCostSnapshotCents, item.currentUnitCostCents),
+      )).orderBy(operationItems.id).get();
+      if (existing) {
+        const nextQuantity = existing.quantity + quantity;
+        line = tx.update(operationItems).set({ quantity: nextQuantity,
+          lineTotalCents: lineTotalCents(nextQuantity, existing.unitCostSnapshotCents), updatedAt: new Date() })
+          .where(eq(operationItems.id, existing.id)).returning().get();
+      } else {
+        line = upsertOperationLine(tx, operation.id, item, quantity, 'individual', null, true);
+      }
+      stockAfter = [{ itemId: item.id, quantity: movement.quantityAfter }];
+    }
+    const now = new Date();
+    if (line.addedAfterFinish) {
+      tx.update(operationItems).set({ addedAfterFinishByAccountId: actor.accountId })
+        .where(eq(operationItems.id, line.id)).run();
+    }
+    tx.insert(operationEvents).values({ operationId: operation.id, eventType: 'item_added', clientEventId: input.clientEventId,
+      payloadJson: JSON.stringify({ postFactum: true, operationItemId: line.id }), undoable: false, createdAt: now }).run();
+    tx.update(operations).set({ totalCostSnapshotCents: calculateOperationTotalCents(tx, operation.id), updatedAt: now })
+      .where(eq(operations.id, operation.id)).run();
+    writeAudit(tx, { action: AUDIT_ACTIONS.operationItemAddedAfterFinish, actorAccountId: actor.accountId,
+      actorRole: actor.role, entityType: 'operation', entityId: operation.id,
+      summary: `${item.name} added after finish to case ${displayCaseCode(operation)}` });
+    return { lines: [line], applied: true, warnings: [], stockAfter };
+  });
+}
+
 // --- T2: Finish and Lock ----------------------------------------------------
 
 /**
@@ -959,11 +1327,15 @@ export function finishOperation(
   db: AppDatabase,
   actor: Actor,
   operationId: number,
+  stopRunningTimer = false,
 ): OperationRow {
   assertAuthenticated(actor);
 
   return runInTransaction(db, (tx) => {
     const operation = loadActiveOperation(tx, operationId);
+    if (operation.orStartedAt && !operation.orEndedAt && !stopRunningTimer) {
+      throw errors.validationFailed('OR timer is still running. Stop the timer before finishing this surgery.');
+    }
     const total = calculateOperationTotalCents(tx, operation.id);
     const now = new Date();
 
@@ -975,6 +1347,7 @@ export function finishOperation(
         updatedAt: now,
         totalCostSnapshotCents: total,
         finishedByAccountId: actor.accountId,
+        orEndedAt: operation.orStartedAt && !operation.orEndedAt ? now : operation.orEndedAt,
       })
       .where(eq(operations.id, operation.id))
       .returning()
@@ -1036,6 +1409,9 @@ export function voidOperation(
     const operation = getOperation(tx, operationId);
     if (!operation) throw errors.operationNotFound(operationId);
     if (operation.status === 'Voided') throw errors.operationAlreadyVoided();
+    if (operation.orStartedAt && !operation.orEndedAt) {
+      throw errors.validationFailed('Stop the OR timer before voiding this surgery.');
+    }
 
     const deductions = netDeductionsByOperation(tx, operation.id);
     const returned: VoidOperationResult['returned'] = [];
@@ -1055,6 +1431,25 @@ export function voidOperation(
         quantity: movement.created ? deduction.netDeducted : 0,
         quantityAfter: movement.quantityAfter,
       });
+    }
+
+    const liquidDeductions = tx.select({
+      itemId: liquidInventoryMovements.itemId,
+      amount: sql<number>`coalesce(-sum(${liquidInventoryMovements.totalVolumeCentimlDelta}), 0)`,
+    }).from(liquidInventoryMovements).where(and(
+      eq(liquidInventoryMovements.operationId, operation.id),
+      inArray(liquidInventoryMovements.movementType, ['used_in_operation', 'returned_from_operation']),
+    )).groupBy(liquidInventoryMovements.itemId).all();
+    for (const deduction of liquidDeductions) {
+      if (deduction.amount <= 0) continue;
+      const item = tx.select().from(items).where(eq(items.id, deduction.itemId)).get();
+      if (!item?.liquidVolumePerVialCentiml) continue;
+      const next = returnLiquidToStock({ unopenedVials: item.liquidUnopenedVials,
+        openVialCentiml: item.liquidOpenVialCentiml }, item.liquidVolumePerVialCentiml, deduction.amount);
+      applyLiquidMovement(tx, { itemId: item.id, movementType: 'void_reversal', next,
+        operationId: operation.id, idempotencyKey: `void:${operation.id}:liquid:${item.id}`,
+        reason: reason?.trim() || 'void', actorAccountId: actor.accountId });
+      returned.push({ itemId: item.id, quantity: 0, quantityAfter: 0 });
     }
 
     const now = new Date();
@@ -1144,6 +1539,11 @@ export function deleteVoidedOperation(
         'Voided surgery movements are not balanced; surgery was not deleted',
       );
     }
+    const unbalancedLiquid = tx.select({ itemId: liquidInventoryMovements.itemId,
+      net: sql<number>`sum(${liquidInventoryMovements.totalVolumeCentimlDelta})` })
+      .from(liquidInventoryMovements).where(eq(liquidInventoryMovements.operationId, operation.id))
+      .groupBy(liquidInventoryMovements.itemId).all().find(row => Number(row.net) !== 0);
+    if (unbalancedLiquid) throw errors.validationFailed('Voided surgery liquid movements are not balanced; surgery was not deleted');
 
     const deletedMovements = tx
       .delete(inventoryMovements)
@@ -1153,6 +1553,9 @@ export function deleteVoidedOperation(
       .delete(operationEvents)
       .where(eq(operationEvents.operationId, operation.id))
       .run().changes;
+    tx.delete(liquidInventoryMovements).where(eq(liquidInventoryMovements.operationId, operation.id)).run();
+    tx.delete(operationCostAdjustments).where(eq(operationCostAdjustments.operationId, operation.id)).run();
+    tx.delete(operationTimeAdjustments).where(eq(operationTimeAdjustments.operationId, operation.id)).run();
     const deletedLines = tx
       .delete(operationItems)
       .where(eq(operationItems.operationId, operation.id))

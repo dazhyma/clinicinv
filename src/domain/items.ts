@@ -11,6 +11,7 @@ import {
   barcodeRegistry,
   inventoryCountLines,
   inventoryMovements,
+  liquidInventoryMovements,
   itemHistoryEvents,
   items,
   operationItems,
@@ -18,12 +19,16 @@ import {
   DEFAULT_UNITS_OF_MEASUREMENT,
   type EntityStatus,
   type ItemRow,
+  type TrackingMethod,
 } from '@/db/schema';
 import { normalizeSearchCode } from '@/lib/search-normalization';
 import { assertAdmin, assertInventoryWorker, isAdmin, type Actor } from './actor';
 import { AUDIT_ACTIONS, writeAudit } from './audit';
 import { ITEM_CODE_PREFIX, nextInternalCode, normalizeScannedCode } from './codes';
 import { errors } from './errors';
+import { applyLiquidMovement } from './liquid-movements';
+import { liquidTotalCentiml } from './liquid';
+import { resolveManufacturer } from './manufacturers';
 import { writeItemHistoryEvent } from './item-history';
 import { assertNonNegativeCents, formatCents } from './money';
 import { applyMovement, idempotencyKeys, runInTransaction } from './movements';
@@ -44,14 +49,18 @@ function registerItemBarcode(
 
 export interface CreateItemInput {
   name: string;
+  trackingMethod?: TrackingMethod;
+  manufacturer?: string | null;
   /** §5.4: обязательное поле. Целые центы. */
   currentUnitCostCents: number;
   /** §5.4: обязательное поле. */
   unitOfMeasurement: string;
   /** §5.4: обязательное поле, может быть 0. */
   initialQuantity: number;
+  initialUnopenedVials?: number;
+  initialOpenVialCentiml?: number;
+  liquidVolumePerVialCentiml?: number | null;
   referenceNumber?: string | null;
-  photoUrl?: string | null;
   category?: string | null;
   storageLocation?: string | null;
   lowStockThreshold?: number | null;
@@ -73,10 +82,21 @@ export function createItem(db: AppDatabase, actor: Actor, input: CreateItemInput
 
   const name = input.name?.trim();
   if (!name) throw errors.validationFailed('Item Name is required');
-  const unitOfMeasurement = input.unitOfMeasurement?.trim();
+  const trackingMethod = input.trackingMethod ?? 'standard';
+  const unitOfMeasurement = trackingMethod === 'liquid' ? 'ml' : input.unitOfMeasurement?.trim();
   if (!unitOfMeasurement) throw errors.validationFailed('Unit of Measurement is required');
   assertNonNegativeCents(input.currentUnitCostCents, 'Cost per Unit');
   assertNonNegativeQuantity(input.initialQuantity, 'Initial Quantity');
+  const initialUnopenedVials = input.initialUnopenedVials ?? 0;
+  const initialOpenVialCentiml = input.initialOpenVialCentiml ?? 0;
+  const volumePerVial = input.liquidVolumePerVialCentiml ?? null;
+  if (trackingMethod === 'liquid') {
+    assertNonNegativeQuantity(initialUnopenedVials, 'Number of Vials');
+    if (!volumePerVial || volumePerVial <= 0) throw errors.validationFailed('Volume per Vial is required');
+    if (initialOpenVialCentiml < 0 || initialOpenVialCentiml > volumePerVial) {
+      throw errors.validationFailed('Open vial amount cannot exceed Volume per Vial');
+    }
+  }
   if (input.lowStockThreshold != null) {
     assertNonNegativeQuantity(input.lowStockThreshold, 'Low Stock Threshold');
   }
@@ -85,6 +105,7 @@ export function createItem(db: AppDatabase, actor: Actor, input: CreateItemInput
     const internalCode = nextInternalCode(tx, ITEM_CODE_PREFIX);
     const barcodeValue = internalCode;
     const now = new Date();
+    const manufacturer = resolveManufacturer(tx, actor, input.manufacturer);
 
     const created = tx
       .insert(items)
@@ -92,11 +113,15 @@ export function createItem(db: AppDatabase, actor: Actor, input: CreateItemInput
         internalCode,
         barcodeValue,
         name,
-        photoUrl: input.photoUrl ?? null,
         referenceNumber: input.referenceNumber?.trim() || null,
+        trackingMethod,
+        manufacturerId: manufacturer?.id ?? null,
         currentUnitCostCents: input.currentUnitCostCents,
         unitOfMeasurement,
         currentQuantity: 0,
+        liquidVolumePerVialCentiml: trackingMethod === 'liquid' ? volumePerVial : null,
+        liquidUnopenedVials: 0,
+        liquidOpenVialCentiml: 0,
         category: input.category?.trim() || null,
         storageLocation: input.storageLocation?.trim() || null,
         lowStockThreshold: input.lowStockThreshold ?? null,
@@ -111,7 +136,7 @@ export function createItem(db: AppDatabase, actor: Actor, input: CreateItemInput
     registerItemBarcode(tx, internalCode, created.id, now);
 
     let finalRow = created;
-    if (input.initialQuantity > 0) {
+    if (trackingMethod === 'standard' && input.initialQuantity > 0) {
       const result = applyMovement(tx, {
         itemId: created.id,
         movementType: 'initial',
@@ -122,6 +147,21 @@ export function createItem(db: AppDatabase, actor: Actor, input: CreateItemInput
         actorAccountId: actor.accountId,
       });
       finalRow = { ...created, currentQuantity: result.quantityAfter };
+    } else if (trackingMethod === 'liquid' && (initialUnopenedVials > 0 || initialOpenVialCentiml > 0)) {
+      const result = applyLiquidMovement(tx, {
+        itemId: created.id,
+        movementType: 'initial',
+        next: { unopenedVials: initialUnopenedVials, openVialCentiml: initialOpenVialCentiml },
+        idempotencyKey: `liquid:initial:${created.id}`,
+        reason: 'initial liquid stock',
+        vialCostAtReceiptCents: input.currentUnitCostCents,
+        actorAccountId: actor.accountId,
+      });
+      finalRow = {
+        ...created,
+        liquidUnopenedVials: result.unopenedVials,
+        liquidOpenVialCentiml: result.openVialCentiml,
+      };
     }
 
     writeAudit(tx, {
@@ -130,7 +170,9 @@ export function createItem(db: AppDatabase, actor: Actor, input: CreateItemInput
       actorRole: actor.role,
       entityType: 'item',
       entityId: created.id,
-      summary: `${internalCode} "${name}" @ ${formatCents(input.currentUnitCostCents)}, initial ${input.initialQuantity}`,
+      summary: trackingMethod === 'liquid'
+        ? `${internalCode} "${name}" @ ${formatCents(input.currentUnitCostCents)}/vial, initial ${initialUnopenedVials} vials`
+        : `${internalCode} "${name}" @ ${formatCents(input.currentUnitCostCents)}, initial ${input.initialQuantity}`,
     });
     writeItemHistoryEvent(tx, {
       itemId: created.id,
@@ -152,7 +194,7 @@ export function createItem(db: AppDatabase, actor: Actor, input: CreateItemInput
  */
 export interface UpdateItemPatch {
   name?: string;
-  photoUrl?: string | null;
+  manufacturer?: string | null;
   referenceNumber?: string | null;
   currentUnitCostCents?: number;
   unitOfMeasurement?: string;
@@ -163,7 +205,11 @@ export interface UpdateItemPatch {
   status?: EntityStatus;
 }
 
-const IMMUTABLE_ITEM_FIELDS = ['internalCode', 'barcodeValue', 'internal_code', 'barcode_value', 'currentQuantity', 'current_quantity'];
+const IMMUTABLE_ITEM_FIELDS = [
+  'internalCode', 'barcodeValue', 'internal_code', 'barcode_value',
+  'currentQuantity', 'current_quantity', 'trackingMethod', 'tracking_method',
+  'liquidVolumePerVialCentiml', 'liquid_volume_per_vial_centiml',
+];
 
 /**
  * Редактирование предмета.
@@ -205,11 +251,14 @@ export function updateItem(
     if (existing.archivedAt) {
       throw errors.validationFailed(`${existing.name} is archived and cannot be edited`);
     }
+    const manufacturer = patch.manufacturer === undefined
+      ? undefined
+      : resolveManufacturer(tx, actor, patch.manufacturer);
     const updated = tx
       .update(items)
       .set({
         ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
-        ...(patch.photoUrl !== undefined ? { photoUrl: patch.photoUrl } : {}),
+        ...(manufacturer !== undefined ? { manufacturerId: manufacturer?.id ?? null } : {}),
         ...(patch.referenceNumber !== undefined
           ? { referenceNumber: patch.referenceNumber?.trim() || null }
           : {}),
@@ -261,10 +310,10 @@ export function updateItem(
         newValue: updated.name,
       },
       {
-        field: 'photoUrl',
+        field: 'manufacturer',
         eventType: 'item.information_changed',
-        oldValue: existing.photoUrl,
-        newValue: updated.photoUrl,
+        oldValue: existing.manufacturerId,
+        newValue: updated.manufacturerId,
       },
       {
         field: 'referenceNumber',
@@ -358,6 +407,8 @@ export interface ReceiveStockInput {
 export interface ReceiveStockResult {
   item: ItemRow;
   quantityAfter: number;
+  liquidUnopenedVialsAfter?: number;
+  liquidOpenVialCentimlAfter?: number;
   /** false — тот же clientEventId уже применялся, поставка не задвоена. */
   applied: boolean;
 }
@@ -385,6 +436,49 @@ export function receiveStock(
     const item = tx.select().from(items).where(eq(items.id, input.itemId)).get();
     if (!item) throw errors.itemNotFound(input.itemId);
     if (item.status !== 'active' || item.archivedAt) throw errors.itemInactive(item.name);
+
+    if (item.trackingMethod === 'liquid') {
+      const movement = applyLiquidMovement(tx, {
+        itemId: input.itemId,
+        movementType: 'received',
+        next: {
+          unopenedVials: item.liquidUnopenedVials + input.quantity,
+          openVialCentiml: item.liquidOpenVialCentiml,
+        },
+        idempotencyKey: `liquid:${idempotencyKeys.receiveStock(input.clientEventId)}`,
+        reason: input.reason ?? null,
+        vialCostAtReceiptCents: input.newUnitCostCents ?? item.currentUnitCostCents,
+        actorAccountId: actor.accountId,
+      });
+      let updated = item;
+      if (movement.created && input.newUnitCostCents != null) {
+        updated = tx.update(items).set({
+          currentUnitCostCents: input.newUnitCostCents,
+          updatedAt: new Date(),
+        }).where(eq(items.id, input.itemId)).returning().get();
+      }
+      if (movement.created) {
+        writeAudit(tx, {
+          action: AUDIT_ACTIONS.stockReceived,
+          actorAccountId: actor.accountId,
+          actorRole: actor.role,
+          entityType: 'item',
+          entityId: input.itemId,
+          summary: `${item.internalCode}: +${input.quantity} unopened vials -> ${movement.unopenedVials}`,
+        });
+      }
+      return {
+        item: {
+          ...updated,
+          liquidUnopenedVials: movement.unopenedVials,
+          liquidOpenVialCentiml: movement.openVialCentiml,
+        },
+        quantityAfter: movement.unopenedVials,
+        liquidUnopenedVialsAfter: movement.unopenedVials,
+        liquidOpenVialCentimlAfter: movement.openVialCentiml,
+        applied: movement.created,
+      };
+    }
 
     const movement = applyMovement(tx, {
       itemId: input.itemId,
@@ -501,6 +595,51 @@ export function adjustStock(
   });
 }
 
+export interface AdjustLiquidStockInput {
+  itemId: number;
+  unopenedVials: number;
+  openVialCentiml: number;
+  reason: string;
+  clientEventId: string;
+}
+
+export function adjustLiquidStock(
+  db: AppDatabase,
+  actor: Actor,
+  input: AdjustLiquidStockInput,
+): { unopenedVialsAfter: number; openVialCentimlAfter: number; applied: boolean } {
+  assertAdmin(actor, 'adjust liquid stock');
+  if (!input.reason.trim()) throw errors.validationFailed('A reason is required for a manual adjustment');
+  return runInTransaction(db, (tx) => {
+    const item = tx.select().from(items).where(eq(items.id, input.itemId)).get();
+    if (!item) throw errors.itemNotFound(input.itemId);
+    if (item.status !== 'active' || item.archivedAt) throw errors.itemInactive(item.name);
+    const movement = applyLiquidMovement(tx, {
+      itemId: item.id,
+      movementType: 'manual_adjustment',
+      next: { unopenedVials: input.unopenedVials, openVialCentiml: input.openVialCentiml },
+      idempotencyKey: `liquid:${idempotencyKeys.manualAdjustment(input.clientEventId)}`,
+      reason: input.reason,
+      actorAccountId: actor.accountId,
+    });
+    if (movement.created) {
+      writeAudit(tx, {
+        action: AUDIT_ACTIONS.stockAdjusted,
+        actorAccountId: actor.accountId,
+        actorRole: actor.role,
+        entityType: 'item',
+        entityId: item.id,
+        summary: `${item.internalCode}: ${item.liquidUnopenedVials} vials + ${item.liquidOpenVialCentiml} centi-ml -> ${movement.unopenedVials} vials + ${movement.openVialCentiml} centi-ml (${input.reason})`,
+      });
+    }
+    return {
+      unopenedVialsAfter: movement.unopenedVials,
+      openVialCentimlAfter: movement.openVialCentiml,
+      applied: movement.created,
+    };
+  });
+}
+
 // --- Чтение -----------------------------------------------------------------
 
 export function getItem(tx: DbLike, itemId: number): ItemRow | undefined {
@@ -510,7 +649,6 @@ export function getItem(tx: DbLike, itemId: number): ItemRow | undefined {
 export interface DeleteItemResult {
   disposition: 'deleted' | 'archived';
   item: ItemRow;
-  photoUrl: string | null;
 }
 
 /**
@@ -536,6 +674,10 @@ export function deleteItem(
       tx.select({ id: inventoryMovements.id }).from(inventoryMovements)
         .where(eq(inventoryMovements.itemId, itemId)).limit(1).get(),
     );
+    const hasLiquidMovement = Boolean(
+      tx.select({ id: liquidInventoryMovements.id }).from(liquidInventoryMovements)
+        .where(eq(liquidInventoryMovements.itemId, itemId)).limit(1).get(),
+    );
     const hasOperation = Boolean(
       tx.select({ id: operationItems.id }).from(operationItems)
         .where(eq(operationItems.itemId, itemId)).limit(1).get(),
@@ -549,7 +691,8 @@ export function deleteItem(
         .where(eq(packItems.itemId, itemId)).limit(1).get(),
     );
     const mustArchive =
-      item.currentQuantity !== 0 || hasMovement || hasOperation || hasCount || belongsToPack;
+      item.currentQuantity !== 0 || item.liquidUnopenedVials !== 0 || item.liquidOpenVialCentiml !== 0 ||
+      hasMovement || hasLiquidMovement || hasOperation || hasCount || belongsToPack;
 
     if (!mustArchive) {
       tx.delete(itemHistoryEvents).where(eq(itemHistoryEvents.itemId, itemId)).run();
@@ -565,7 +708,7 @@ export function deleteItem(
         entityId: itemId,
         summary: `${item.internalCode} "${item.name}" permanently deleted`,
       });
-      return { disposition: 'deleted', item, photoUrl: item.photoUrl };
+      return { disposition: 'deleted', item };
     }
 
     const now = new Date();
@@ -595,7 +738,7 @@ export function deleteItem(
       entityId: itemId,
       summary: `${item.internalCode} "${item.name}" archived`,
     });
-    return { disposition: 'archived', item: archived, photoUrl: item.photoUrl };
+    return { disposition: 'archived', item: archived };
   });
 }
 
@@ -641,7 +784,12 @@ export function searchItems(
 }
 
 /** §5.11: предмет считается «низким остатком», если порог задан и остаток <= порога. */
-export function isLowStock(item: Pick<ItemRow, 'currentQuantity' | 'lowStockThreshold'>): boolean {
+export function isLowStock(item: ItemRow): boolean {
+  if (item.trackingMethod === 'liquid') {
+    return item.liquidLowStockThresholdCentiml != null && item.liquidVolumePerVialCentiml != null &&
+      liquidTotalCentiml(item.liquidUnopenedVials, item.liquidOpenVialCentiml, item.liquidVolumePerVialCentiml)
+        <= item.liquidLowStockThresholdCentiml;
+  }
   return item.lowStockThreshold != null && item.currentQuantity <= item.lowStockThreshold;
 }
 
@@ -654,9 +802,11 @@ export interface ItemListFilters {
   query?: string;
   category?: string | null;
   storageLocation?: string | null;
+  manufacturerId?: number | null;
   availability?: AvailabilityFilter;
   /** §5.11: только предметы на пороге низкого остатка или ниже. */
   lowStockOnly?: boolean;
+  priceMissing?: boolean;
   includeInactive?: boolean;
   limit?: number;
 }
@@ -700,18 +850,27 @@ export function listItems(tx: DbLike, filters: ItemListFilters = {}): ItemRow[] 
 
   if (filters.category) conditions.push(eq(items.category, filters.category));
   if (filters.storageLocation) conditions.push(eq(items.storageLocation, filters.storageLocation));
+  if (filters.manufacturerId) conditions.push(eq(items.manufacturerId, filters.manufacturerId));
 
   if (filters.availability === 'in_stock') {
-    conditions.push(sql`${items.currentQuantity} > 0`);
+    conditions.push(sql`CASE WHEN ${items.trackingMethod} = 'liquid'
+      THEN (${items.liquidUnopenedVials} * ${items.liquidVolumePerVialCentiml} + ${items.liquidOpenVialCentiml}) > 0
+      ELSE ${items.currentQuantity} > 0 END`);
   } else if (filters.availability === 'out_of_stock') {
-    conditions.push(sql`${items.currentQuantity} <= 0`);
+    conditions.push(sql`CASE WHEN ${items.trackingMethod} = 'liquid'
+      THEN (${items.liquidUnopenedVials} * ${items.liquidVolumePerVialCentiml} + ${items.liquidOpenVialCentiml}) <= 0
+      ELSE ${items.currentQuantity} <= 0 END`);
   }
 
   if (filters.lowStockOnly) {
     conditions.push(
-      sql`${items.lowStockThreshold} is not null and ${items.currentQuantity} <= ${items.lowStockThreshold}`,
+      sql`CASE WHEN ${items.trackingMethod} = 'liquid'
+        THEN ${items.liquidLowStockThresholdCentiml} is not null AND
+          (${items.liquidUnopenedVials} * ${items.liquidVolumePerVialCentiml} + ${items.liquidOpenVialCentiml}) <= ${items.liquidLowStockThresholdCentiml}
+        ELSE ${items.lowStockThreshold} is not null AND ${items.currentQuantity} <= ${items.lowStockThreshold} END`,
     );
   }
+  if (filters.priceMissing) conditions.push(eq(items.currentUnitCostCents, 0));
 
   const where = conditions.length ? and(...conditions) : undefined;
 
@@ -772,7 +931,10 @@ export function listLowStockItems(tx: DbLike): ItemRow[] {
     .where(
       and(
         eq(items.status, 'active'),
-        sql`${items.lowStockThreshold} is not null and ${items.currentQuantity} <= ${items.lowStockThreshold}`,
+        sql`CASE WHEN ${items.trackingMethod} = 'liquid'
+          THEN ${items.liquidLowStockThresholdCentiml} is not null AND
+            (${items.liquidUnopenedVials} * ${items.liquidVolumePerVialCentiml} + ${items.liquidOpenVialCentiml}) <= ${items.liquidLowStockThresholdCentiml}
+          ELSE ${items.lowStockThreshold} is not null AND ${items.currentQuantity} <= ${items.lowStockThreshold} END`,
       ),
     )
     .orderBy(items.name)

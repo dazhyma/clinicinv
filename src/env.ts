@@ -41,24 +41,6 @@ export const env = {
   get databaseFile(): string {
     return path.resolve(process.cwd(), str('DATABASE_FILE', './data/clinic.db'));
   },
-  /**
-   * Каталог загруженных фотографий (§13).
-   *
-   * Он НАМЕРЕННО находится вне `public/`: §15 и NFR-17 запрещают публичные URL,
-   * отдающие данные системы без авторизации. Файлы отдаёт только route handler
-   * `/api/photos/[token]`, проверяющий сессию на каждом запросе.
-   */
-  get uploadsDir(): string {
-    return path.resolve(process.cwd(), str('UPLOADS_DIR', './data/uploads'));
-  },
-  /** Q-40: верхний предел размера загружаемого файла, МБ. */
-  get photoMaxBytes(): number {
-    return int('PHOTO_MAX_MB', 10) * 1024 * 1024;
-  },
-  /** Q-40: максимальная сторона хранимого изображения, px. */
-  get photoMaxEdgePx(): number {
-    return int('PHOTO_MAX_EDGE_PX', 1024);
-  },
   get sessionTtlMs(): number {
     return int('SESSION_TTL_HOURS', 12) * 60 * 60 * 1000;
   },

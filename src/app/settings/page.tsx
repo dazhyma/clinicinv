@@ -38,6 +38,11 @@ export default async function SettingsPage() {
         <ButtonLink href="/settings/password" variant="secondary" className="mt-4"><LockIcon size={19} /> Change Password</ButtonLink>
       </Card>
       <Card className="mb-6 p-5 sm:p-6">
+        <h2 className="text-xl font-semibold">Surgery Types</h2>
+        <p className="mt-1 max-w-xl text-base text-slate-600">Manage the required list used when starting a surgery.</p>
+        <ButtonLink href="/settings/surgery-types" variant="secondary" className="mt-4">Manage Surgery Types</ButtonLink>
+      </Card>
+      <Card className="mb-6 p-5 sm:p-6">
         <h2 className="text-xl font-semibold">Doctors</h2>
         <p className="mt-1 max-w-xl text-base text-slate-600">
           Add or remove doctors and set the two-letter code that prefixes their surgery codes,

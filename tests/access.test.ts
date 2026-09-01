@@ -99,7 +99,7 @@ describe('Staff не получает полный Admin-доступ', () => {
     expect(getItem(ctx.db, item.id)!.currentUnitCostCents).toBe(425);
   });
 
-  it('создание и изменение пака отклоняются', () => {
+  it('создание пака разрешено, изменение отклоняется', () => {
     const ctx = setupTestDb();
     const item = makeItem(ctx, FIXTURES.gauze);
     const pack = createPack(ctx.db, ctx.admin, {
@@ -112,7 +112,7 @@ describe('Staff не получает полный Admin-доступ', () => {
         name: 'Staff Pack',
         composition: [{ itemId: item.id, quantity: 1 }],
       }),
-    ).toThrow(/permission/i);
+    ).not.toThrow();
 
     expect(() => updatePack(ctx.db, ctx.staff, pack.id, { name: 'Renamed' })).toThrow(
       /permission/i,

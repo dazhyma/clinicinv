@@ -9,10 +9,12 @@ import {
   inventoryCounts,
   inventoryMovements,
   itemHistoryEvents,
+  liquidInventoryMovements,
   operations,
   userAccounts,
   type UserRole,
 } from '@/db/schema';
+import { formatCentiml } from './liquid';
 
 export type ItemHistoryCategory =
   | 'all'
@@ -68,6 +70,9 @@ export interface ItemHistoryEntry {
   operationCode: string | null;
   inventoryCountCode: string | null;
   reason: string | null;
+  liquidStockBefore: string | null;
+  liquidVolumeDeltaMl: string | null;
+  liquidStockAfter: string | null;
 }
 
 function movementPresentation(type: string, reason?: string | null): {
@@ -104,7 +109,6 @@ function fieldLabel(field: string | null): string {
   const labels: Record<string, string> = {
     name: 'Item Name Changed',
     referenceNumber: 'Reference Number Changed',
-    photoUrl: 'Photo Changed',
     unitOfMeasurement: 'Unit of Measurement Changed',
     category: 'Category Changed',
     storageLocation: 'Storage Location Changed',
@@ -132,11 +136,18 @@ export function listItemHistory(
     .where(eq(itemHistoryEvents.itemId, itemId))
     .orderBy(asc(itemHistoryEvents.id))
     .all();
+  const liquidMovements = tx
+    .select()
+    .from(liquidInventoryMovements)
+    .where(eq(liquidInventoryMovements.itemId, itemId))
+    .orderBy(asc(liquidInventoryMovements.id))
+    .all();
 
   const accountIds = Array.from(
     new Set(
       [
         ...movements.map((row) => row.createdByAccountId),
+        ...liquidMovements.map((row) => row.createdByAccountId),
         ...events.map((row) => row.actorAccountId),
       ].filter((value): value is number => value != null),
     ),
@@ -153,7 +164,11 @@ export function listItemHistory(
   }
 
   const operationIds = Array.from(
-    new Set(movements.map((row) => row.operationId).filter((value): value is number => value != null)),
+    new Set(
+      [...movements, ...liquidMovements]
+        .map((row) => row.operationId)
+        .filter((value): value is number => value != null),
+    ),
   );
   const operationCodes = new Map<number, string>();
   if (operationIds.length) {
@@ -168,7 +183,7 @@ export function listItemHistory(
 
   const countIds = Array.from(
     new Set(
-      movements
+      [...movements, ...liquidMovements]
         .map((row) => row.inventoryCountId)
         .filter((value): value is number => value != null),
     ),
@@ -211,6 +226,42 @@ export function listItemHistory(
           ? countCodes.get(movement.inventoryCountId) ?? null
           : null,
       reason: movement.reason,
+      liquidStockBefore: null,
+      liquidVolumeDeltaMl: null,
+      liquidStockAfter: null,
+    };
+  });
+
+  let runningUnopenedVials = 0;
+  const liquidMovementEntries = liquidMovements.map<ItemHistoryEntry>((movement) => {
+    const unopenedBefore = runningUnopenedVials;
+    runningUnopenedVials += movement.unopenedVialsDelta;
+    const presentation = movementPresentation(movement.movementType, movement.reason);
+    return {
+      id: `liquid-movement-${movement.id}`,
+      category: presentation.category,
+      action: presentation.action,
+      createdAtMs: movement.createdAt.getTime(),
+      accountRole:
+        movement.createdByAccountId != null
+          ? accountRoles.get(movement.createdByAccountId) ?? null
+          : null,
+      quantityBefore: null,
+      quantityDelta: null,
+      quantityAfter: null,
+      fieldName: null,
+      oldValue: null,
+      newValue: null,
+      operationCode:
+        movement.operationId != null ? operationCodes.get(movement.operationId) ?? null : null,
+      inventoryCountCode:
+        movement.inventoryCountId != null
+          ? countCodes.get(movement.inventoryCountId) ?? null
+          : null,
+      reason: movement.reason,
+      liquidStockBefore: `${unopenedBefore} unopened + ${formatCentiml(movement.openVialCentimlBefore)} ml open`,
+      liquidVolumeDeltaMl: formatCentiml(movement.totalVolumeCentimlDelta),
+      liquidStockAfter: `${runningUnopenedVials} unopened + ${formatCentiml(movement.openVialCentimlAfter)} ml open`,
     };
   });
 
@@ -238,9 +289,12 @@ export function listItemHistory(
     operationCode: null,
     inventoryCountCode: null,
     reason: null,
+    liquidStockBefore: null,
+    liquidVolumeDeltaMl: null,
+    liquidStockAfter: null,
   }));
 
-  return [...movementEntries, ...changeEntries]
+  return [...movementEntries, ...liquidMovementEntries, ...changeEntries]
     .filter((entry) => filter === 'all' || entry.category === filter)
     .sort((left, right) => right.createdAtMs - left.createdAtMs || right.id.localeCompare(left.id));
 }

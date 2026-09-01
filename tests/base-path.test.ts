@@ -4,7 +4,6 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { BASE_PATH, withBasePath } from '@/base-path';
 import { sessionCookieOptions } from '@/auth/session';
-import { photoUrlForToken, thumbnailUrl } from '@/photos/shared';
 
 /**
  * Развёртывание под префиксом `/clinic` (D-51).
@@ -30,9 +29,9 @@ describe('basePath развёртывания', () => {
   });
 
   it('withBasePath добавляет префикс один раз', () => {
-    expect(withBasePath('/api/photos/abc')).toBe(`${BASE_PATH}/api/photos/abc`);
+    expect(withBasePath('/api/barcode/abc')).toBe(`${BASE_PATH}/api/barcode/abc`);
     // Повторное применение — типичная ошибка при правке разметки.
-    expect(withBasePath(withBasePath('/api/photos/abc'))).toBe(`${BASE_PATH}/api/photos/abc`);
+    expect(withBasePath(withBasePath('/api/barcode/abc'))).toBe(`${BASE_PATH}/api/barcode/abc`);
     expect(withBasePath(BASE_PATH)).toBe(BASE_PATH);
   });
 
@@ -41,15 +40,6 @@ describe('basePath развёртывания', () => {
     expect(withBasePath('?variant=thumb')).toBe('?variant=thumb');
   });
 
-  it('в БД путь фотографии хранится БЕЗ префикса развёртывания', () => {
-    // §13/D-19: photo_url — маршрут приложения, а не адрес развёртывания.
-    // Префикс появляется только при отрисовке (ItemPhoto), иначе смена адреса
-    // размещения потребовала бы миграции данных.
-    const url = photoUrlForToken('0'.repeat(32));
-    expect(url.startsWith(BASE_PATH)).toBe(false);
-    expect(url).toBe(`/api/photos/${'0'.repeat(32)}`);
-    expect(thumbnailUrl(url)).toBe(`${url}?variant=thumb`);
-  });
 });
 
 describe('Items return path', () => {

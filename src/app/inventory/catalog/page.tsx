@@ -18,6 +18,8 @@ interface SearchParams {
   availability?: string;
   lowStock?: string;
   includeInactive?: string;
+  manufacturerId?: string;
+  priceMissing?: string;
   created?: string;
   updated?: string;
   error?: string;
@@ -40,6 +42,8 @@ export default async function InventoryCatalogPage({
     availability: params.availability ?? 'all',
     lowStock: params.lowStock === '1',
     includeInactive: params.includeInactive === '1',
+    manufacturerId: params.manufacturerId ?? '',
+    priceMissing: params.priceMissing === '1',
   };
   const result = listItemsForActor(getDb(), actor, query);
   const returnParams = new URLSearchParams();
@@ -49,6 +53,8 @@ export default async function InventoryCatalogPage({
   if (query.availability !== 'all') returnParams.set('availability', query.availability);
   if (query.lowStock) returnParams.set('lowStock', '1');
   if (query.includeInactive) returnParams.set('includeInactive', '1');
+  if (query.manufacturerId) returnParams.set('manufacturerId', query.manufacturerId);
+  if (query.priceMissing) returnParams.set('priceMissing', '1');
   const returnTo = `/inventory/catalog${returnParams.size ? `?${returnParams}` : ''}`;
 
   return (
@@ -101,14 +107,15 @@ export default async function InventoryCatalogPage({
           values={query}
           isAdmin={isAdmin}
           lowStockCount={result.lowStockCount}
+          manufacturers={result.manufacturers}
         />
       </div>
 
       {result.items.length === 0 ? (
         <section className="app-card">
           <EmptyState
-            title={query.q || query.category || query.location || query.lowStock ? 'No items found' : 'No items yet'}
-            description={query.q || query.category || query.location || query.lowStock ? 'Try changing the search or filters.' : 'New inventory items will appear here.'}
+            title={query.q || query.category || query.location || query.lowStock || query.manufacturerId || query.priceMissing ? 'No items found' : 'No items yet'}
+            description={query.q || query.category || query.location || query.lowStock || query.manufacturerId || query.priceMissing ? 'Try changing the search or filters.' : 'New inventory items will appear here.'}
           />
         </section>
       ) : (

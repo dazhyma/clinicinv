@@ -25,6 +25,7 @@ import {
   upsertCountLine,
 } from '@/domain/inventory-count';
 import { getItem } from '@/domain/items';
+import { formatCentiml, parseNonNegativeMlToCentiml } from '@/domain/liquid';
 import { resolveScannedBarcode } from '@/domain/operations';
 import { listItemsForActor } from './items';
 import { FieldValidator, type RawFormValue } from './parse';
@@ -49,6 +50,11 @@ export interface CountLineView {
   countedQuantity: number;
   difference: number;
   applied: boolean;
+  trackingMethod: 'standard' | 'liquid';
+  expectedUnopenedVials: number | null;
+  countedUnopenedVials: number | null;
+  expectedOpenVialMl: string | null;
+  countedOpenVialMl: string | null;
 }
 
 export interface InventoryCountStateView {
@@ -71,12 +77,17 @@ export interface CountScanTargetView {
   name: string;
   internalCode: string;
   referenceNumber: string | null;
-  photoUrl: string | null;
   unitOfMeasurement: string;
   /** §5.10, шаг 4: система показывает ожидаемое количество. */
   expectedQuantity: number;
   /** Уже введённое в этой инвентаризации значение, если предмет сканируют повторно. */
   countedQuantity: number | null;
+  trackingMethod: 'standard' | 'liquid';
+  expectedUnopenedVials: number;
+  expectedOpenVialMl: string;
+  countedUnopenedVials: number | null;
+  countedOpenVialMl: string | null;
+  liquidVolumePerVialMl: string | null;
 }
 
 export interface CountSearchResultView {
@@ -99,6 +110,11 @@ function toLineView(line: InventoryCountLineRow, item: ItemRow | undefined): Cou
     countedQuantity: line.countedQuantity,
     difference: line.difference,
     applied: line.applied,
+    trackingMethod: line.trackingMethodSnapshot,
+    expectedUnopenedVials: line.expectedUnopenedVials,
+    countedUnopenedVials: line.countedUnopenedVials,
+    expectedOpenVialMl: line.expectedOpenVialCentiml == null ? null : formatCentiml(line.expectedOpenVialCentiml),
+    countedOpenVialMl: line.countedOpenVialCentiml == null ? null : formatCentiml(line.countedOpenVialCentiml),
   };
 }
 
@@ -204,10 +220,18 @@ function openCountItem(
     name: item.name,
     internalCode: item.internalCode,
     referenceNumber: item.referenceNumber,
-    photoUrl: item.photoUrl,
     unitOfMeasurement: item.unitOfMeasurement,
     expectedQuantity: item.currentQuantity,
     countedQuantity: existing?.countedQuantity ?? null,
+    trackingMethod: item.trackingMethod,
+    expectedUnopenedVials: item.liquidUnopenedVials,
+    expectedOpenVialMl: formatCentiml(item.liquidOpenVialCentiml),
+    countedUnopenedVials: existing?.countedUnopenedVials ?? null,
+    countedOpenVialMl: existing?.countedOpenVialCentiml == null ? null : formatCentiml(existing.countedOpenVialCentiml),
+    liquidVolumePerVialMl:
+      item.liquidVolumePerVialCentiml == null
+        ? null
+        : formatCentiml(item.liquidVolumePerVialCentiml),
   };
 }
 
@@ -305,6 +329,8 @@ export interface RecordCountLineInput {
   countId: RawFormValue;
   itemId: RawFormValue;
   countedQuantity: RawFormValue;
+  countedUnopenedVials?: RawFormValue;
+  countedOpenVialMl?: RawFormValue;
 }
 
 export interface RecordCountLineResult {
@@ -334,22 +360,38 @@ export function recordCountLineAction(
   const itemId = v.requiredInteger('itemId', input.itemId, 'Item', { min: 1 });
   // Ноль — законный результат пересчёта («на полке пусто»), поэтому пустое поле
   // и «0» различаются: молча превратить пропуск в ноль значило бы списать всё.
-  const countedQuantity = v.requiredInteger(
-    'countedQuantity',
-    input.countedQuantity,
-    'Counted quantity',
-    { min: 0 },
-  );
+  const item = !v.hasErrors ? getItem(db, itemId) : undefined;
+  const countedQuantity = item?.trackingMethod === 'liquid' ? 0 : v.requiredInteger(
+    'countedQuantity', input.countedQuantity, 'Counted quantity', { min: 0 });
+  const countedUnopenedVials = item?.trackingMethod === 'liquid'
+    ? v.requiredInteger('countedUnopenedVials', input.countedUnopenedVials, 'Unopened vials', { min: 0 }) : undefined;
+  let countedOpenVialCentiml: number | undefined;
+  if (item?.trackingMethod === 'liquid') {
+    try {
+      countedOpenVialCentiml = parseNonNegativeMlToCentiml(
+        v.text(input.countedOpenVialMl),
+        'Open vial amount',
+      );
+    } catch (error) {
+      v.add(
+        'countedOpenVialMl',
+        error instanceof Error ? error.message : 'Open vial amount is invalid',
+      );
+    }
+  }
   if (v.hasErrors) return failFields(v.errors);
 
   return runAction(() => {
-    const line = upsertCountLine(db, actor, { countId, itemId, countedQuantity });
+    const line = upsertCountLine(db, actor, { countId, itemId, countedQuantity, countedUnopenedVials, countedOpenVialCentiml });
     const item = getItem(db, itemId);
     const view = toLineView(line, item);
 
     const sign = view.difference > 0 ? '+' : '';
-    const message =
-      view.difference === 0
+    const message = view.trackingMethod === 'liquid'
+      ? view.difference === 0
+        ? `${view.name}: matches inventory (${view.expectedUnopenedVials ?? 0} unopened + ${view.expectedOpenVialMl ?? '0.00'} ml open)`
+        : `${view.name}: expected ${view.expectedUnopenedVials ?? 0} unopened + ${view.expectedOpenVialMl ?? '0.00'} ml open, counted ${view.countedUnopenedVials ?? 0} unopened + ${view.countedOpenVialMl ?? '0.00'} ml open, difference ${sign}${formatCentiml(view.difference)} ml`
+      : view.difference === 0
         ? `${view.name}: matches inventory (${view.expectedQuantity})`
         : `${view.name}: expected ${view.expectedQuantity}, counted ${view.countedQuantity}, difference ${sign}${view.difference}`;
 

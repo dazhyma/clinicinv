@@ -4,12 +4,13 @@
  */
 import type { AppDatabase } from '@/db/client';
 import { createInMemoryConnection } from '@/db/testing';
-import { userAccounts, type DoctorRow } from '@/db/schema';
+import { userAccounts, type DoctorRow, type SurgeryTypeRow } from '@/db/schema';
 import type { Actor } from '@/domain/actor';
 import { createDoctor } from '@/domain/doctors';
 import { createItem } from '@/domain/items';
 import { createPack } from '@/domain/packs';
 import { setSetting, SETTING_KEYS } from '@/domain/settings';
+import { createSurgeryType } from '@/domain/surgery-types';
 
 export interface TestContext {
   db: AppDatabase;
@@ -18,6 +19,7 @@ export interface TestContext {
   staff: Actor;
   /** Врач по умолчанию: без него операция не создаётся. */
   doctor: DoctorRow;
+  surgeryType: SurgeryTypeRow;
 }
 
 export function setupTestDb(): TestContext {
@@ -54,13 +56,16 @@ export function setupTestDb(): TestContext {
 
   const admin: Actor = { accountId: adminRow.id, role: 'Admin' };
 
+  const doctor = createDoctor(db, admin, { lastName: 'Chen' });
+  const surgeryType = createSurgeryType(db, admin, 'General');
   return {
     db,
     sqlite,
     admin,
     staff: { accountId: staffRow.id, role: 'Staff' },
     // Код CH взят из примера заказчика: операции этого врача — CH00001, CH00002…
-    doctor: createDoctor(db, admin, { lastName: 'Chen' }),
+    doctor,
+    surgeryType,
   };
 }
 

@@ -24,9 +24,8 @@ interface SearchParams {
  * Вкладка Packs раздела Inventory (§5.1, §6).
  *
  * Чтение доступно обеим ролям: Staff сканирует паки (§3.2) и должен видеть их
- * состав. Кнопки Add New Pack и Edit показываются только Admin — но это лишь
- * эргономика: сами действия отклоняются на сервере (§18.22), см.
- * `src/actions/packs.ts`.
+ * состав. Add New Pack доступна Staff и Admin по новому ТЗ; Edit, изменение
+ * статуса и удаление остаются только у Admin и проверяются на сервере.
  *
  * Неактивные паки — административный срез, поэтому переключатель показывается
  * только Admin (сервер всё равно игнорирует его для Staff).
@@ -92,14 +91,14 @@ export default async function InventoryPacksPage({
       ) : null}
 
       <div className="mb-5 flex flex-wrap items-center gap-3">
-        {isAdmin ? (
-          <>
-            <Link
+        <Link
               href="/inventory/packs/new"
               className="rounded-xl bg-slate-900 px-6 py-3 text-lg font-semibold text-white"
             >
               Add New Pack
-            </Link>
+        </Link>
+        {isAdmin ? (
+          <>
             <Link
               href={includeInactive ? '/inventory/packs' : '/inventory/packs?includeInactive=1'}
               className="rounded-xl border border-slate-300 bg-white px-6 py-3 text-lg font-medium text-slate-800"

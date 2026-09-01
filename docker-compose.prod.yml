@@ -37,7 +37,6 @@ services:
     environment:
       # Пути внутри контейнера фиксированы: том смонтирован в /app/data.
       DATABASE_FILE: /app/data/clinic.db
-      UPLOADS_DIR: /app/data/uploads
       BACKUP_DIR: /app/data/backups
       # Система работает только за HTTPS — cookie сессии без Secure не выдаётся.
       COOKIE_SECURE: 'true'

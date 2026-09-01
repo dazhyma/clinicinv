@@ -18,6 +18,7 @@ export function ItemFilters({
   values,
   isAdmin,
   lowStockCount,
+  manufacturers,
 }: {
   categories: string[];
   storageLocations: string[];
@@ -28,9 +29,12 @@ export function ItemFilters({
     availability: string;
     lowStock: boolean;
     includeInactive: boolean;
+    manufacturerId: string;
+    priceMissing: boolean;
   };
   isAdmin: boolean;
   lowStockCount: number;
+  manufacturers: { id: number; name: string }[];
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const submit = () => formRef.current?.requestSubmit();
@@ -66,7 +70,7 @@ export function ItemFilters({
         </button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-4">
         <div>
           <label htmlFor="category" className="mb-1 block text-sm text-slate-600">
             Category
@@ -84,6 +88,12 @@ export function ItemFilters({
                 {value}
               </option>
             ))}
+          </Select>
+        </div>
+        <div>
+          <label htmlFor="manufacturerId" className="mb-1 block text-sm text-slate-600">Manufacturer</label>
+          <Select id="manufacturerId" name="manufacturerId" defaultValue={values.manufacturerId} onChange={submit} className="w-full">
+            <option value="">All manufacturers</option>{manufacturers.map(value => <option key={value.id} value={value.id}>{value.name}</option>)}
           </Select>
         </div>
 
@@ -140,6 +150,10 @@ export function ItemFilters({
           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-sm text-amber-900">
             {lowStockCount}
           </span>
+        </label>
+        <label className="flex min-h-12 items-center gap-2 text-base">
+          <input type="checkbox" name="priceMissing" value="1" defaultChecked={values.priceMissing} onChange={submit} className="h-5 w-5" />
+          Price Missing ($0)
         </label>
 
         {isAdmin ? (

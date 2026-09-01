@@ -23,22 +23,23 @@ import {
   type PackRow,
 } from '@/db/schema';
 import { normalizeSearchCode } from '@/lib/search-normalization';
-import { assertAdmin, type Actor } from './actor';
+import { assertAdmin, assertAuthenticated, type Actor } from './actor';
 import { AUDIT_ACTIONS, writeAudit } from './audit';
 import { nextInternalCode, normalizeScannedCode, PACK_CODE_PREFIX } from './codes';
 import { errors } from './errors';
+import { liquidLineTotalCents, vialCostToPerMlMicros } from './liquid';
 import { assertPositiveQuantity } from './quantity';
 import { runInTransaction } from './movements';
 
 export interface PackComponentInput {
   itemId: number;
   quantity: number;
+  liquidAmountCentiml?: number | null;
 }
 
 export interface CreatePackInput {
   name: string;
   composition: PackComponentInput[];
-  photoUrl?: string | null;
   notes?: string | null;
   status?: EntityStatus;
 }
@@ -47,7 +48,9 @@ function validateComposition(composition: PackComponentInput[]): PackComponentIn
   if (!composition.length) throw errors.validationFailed('A pack must contain at least one item');
   const seen = new Set<number>();
   for (const component of composition) {
-    assertPositiveQuantity(component.quantity, 'Pack item quantity');
+    if (component.quantity <= 0 && !component.liquidAmountCentiml) {
+      throw errors.validationFailed('Pack item amount must be greater than zero');
+    }
     if (seen.has(component.itemId)) {
       // ux_pack_items_pack_item поймал бы это и на уровне БД, но сообщение
       // должно быть конкретным (§14.4).
@@ -59,7 +62,7 @@ function validateComposition(composition: PackComponentInput[]): PackComponentIn
 }
 
 export function createPack(db: AppDatabase, actor: Actor, input: CreatePackInput): PackRow {
-  assertAdmin(actor, 'create pack');
+  assertAuthenticated(actor);
 
   const name = input.name?.trim();
   if (!name) throw errors.validationFailed('Pack name is required');
@@ -76,7 +79,6 @@ export function createPack(db: AppDatabase, actor: Actor, input: CreatePackInput
         internalCode,
         barcodeValue,
         name,
-        photoUrl: input.photoUrl ?? null,
         notes: input.notes?.trim() || null,
         status: input.status ?? 'active',
         createdAt: now,
@@ -93,8 +95,17 @@ export function createPack(db: AppDatabase, actor: Actor, input: CreatePackInput
       const item = tx.select().from(items).where(eq(items.id, component.itemId)).get();
       if (!item) throw errors.itemNotFound(component.itemId);
       if (item.status !== 'active' || item.archivedAt) throw errors.itemInactive(item.name);
+      if (item.trackingMethod === 'liquid' && !component.liquidAmountCentiml) {
+        throw errors.validationFailed(`${item.name} requires an amount in ml`);
+      }
+      if (item.trackingMethod === 'standard') assertPositiveQuantity(component.quantity, 'Pack item quantity');
       tx.insert(packItems)
-        .values({ packId: created.id, itemId: component.itemId, quantity: component.quantity })
+        .values({
+          packId: created.id,
+          itemId: component.itemId,
+          quantity: item.trackingMethod === 'standard' ? component.quantity : 0,
+          liquidAmountCentiml: item.trackingMethod === 'liquid' ? component.liquidAmountCentiml : null,
+        })
         .run();
     }
 
@@ -113,7 +124,6 @@ export function createPack(db: AppDatabase, actor: Actor, input: CreatePackInput
 
 export interface UpdatePackPatch {
   name?: string;
-  photoUrl?: string | null;
   notes?: string | null;
   status?: EntityStatus;
   /** Полная замена состава. Движений остатков не порождает (§6.7). */
@@ -149,7 +159,6 @@ export function updatePack(
       .update(packs)
       .set({
         ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
-        ...(patch.photoUrl !== undefined ? { photoUrl: patch.photoUrl } : {}),
         ...(patch.notes !== undefined ? { notes: patch.notes?.trim() || null } : {}),
         ...(patch.status !== undefined ? { status: patch.status } : {}),
         updatedAt: new Date(),
@@ -166,8 +175,17 @@ export function updatePack(
         const item = tx.select().from(items).where(eq(items.id, component.itemId)).get();
         if (!item) throw errors.itemNotFound(component.itemId);
         if (item.status !== 'active' || item.archivedAt) throw errors.itemInactive(item.name);
+        if (item.trackingMethod === 'liquid' && !component.liquidAmountCentiml) {
+          throw errors.validationFailed(`${item.name} requires an amount in ml`);
+        }
+        if (item.trackingMethod === 'standard') assertPositiveQuantity(component.quantity, 'Pack item quantity');
         tx.insert(packItems)
-          .values({ packId, itemId: component.itemId, quantity: component.quantity })
+          .values({
+            packId,
+            itemId: component.itemId,
+            quantity: item.trackingMethod === 'standard' ? component.quantity : 0,
+            liquidAmountCentiml: item.trackingMethod === 'liquid' ? component.liquidAmountCentiml : null,
+          })
           .run();
       }
     }
@@ -188,7 +206,6 @@ export function updatePack(
 export interface DeletePackResult {
   disposition: 'deleted' | 'archived';
   pack: PackRow;
-  photoUrl: string | null;
 }
 
 /** Used packs keep their historical identity; unused packs are removed fully. */
@@ -243,7 +260,7 @@ export function deletePack(
         entityId: packId,
         summary: `${pack.internalCode} "${pack.name}" permanently deleted`,
       });
-      return { disposition: 'deleted', pack, photoUrl: pack.photoUrl };
+      return { disposition: 'deleted', pack };
     }
 
     const archived = tx
@@ -265,13 +282,14 @@ export function deletePack(
       entityId: packId,
       summary: `${pack.internalCode} "${pack.name}" archived`,
     });
-    return { disposition: 'archived', pack: archived, photoUrl: pack.photoUrl };
+    return { disposition: 'archived', pack: archived };
   });
 }
 
 export interface PackComponent {
   item: ItemRow;
   quantity: number;
+  liquidAmountCentiml: number | null;
 }
 
 export function getPack(tx: DbLike, packId: number): PackRow | undefined {
@@ -284,7 +302,7 @@ export function findPackByBarcode(tx: DbLike, barcode: string): PackRow | undefi
 
 export function getPackComposition(tx: DbLike, packId: number): PackComponent[] {
   return tx
-    .select({ item: items, quantity: packItems.quantity })
+    .select({ item: items, quantity: packItems.quantity, liquidAmountCentiml: packItems.liquidAmountCentiml })
     .from(packItems)
     .innerJoin(items, eq(items.id, packItems.itemId))
     .where(eq(packItems.packId, packId))
@@ -299,7 +317,12 @@ export function getPackComposition(tx: DbLike, packId: number): PackComponent[] 
  */
 export function packCurrentCostCents(tx: DbLike, packId: number): number {
   return getPackComposition(tx, packId).reduce(
-    (total, component) => total + component.item.currentUnitCostCents * component.quantity,
+    (total, component) => total + (component.item.trackingMethod === 'liquid' && component.liquidAmountCentiml
+      ? liquidLineTotalCents(
+          component.liquidAmountCentiml,
+          vialCostToPerMlMicros(component.item.currentUnitCostCents, component.item.liquidVolumePerVialCentiml!),
+        )
+      : component.item.currentUnitCostCents * component.quantity),
     0,
   );
 }

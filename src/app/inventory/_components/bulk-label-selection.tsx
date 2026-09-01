@@ -9,7 +9,6 @@ import {
   MAX_BULK_LABELS,
   MAX_COPIES_PER_ITEM,
 } from '@/domain/label-sheet';
-import { ItemPhoto } from '../../_components/item-photo';
 import { Select } from '../../_components/ui';
 import {
   EMPTY_BULK_LABEL_STATE,
@@ -326,7 +325,6 @@ export function BulkLabelSelection({
                     aria-label={`Select ${item.name}`}
                     className="h-7 w-7 shrink-0"
                   />
-                  <ItemPhoto photoUrl={item.photoUrl} name={item.name} size={64} />
                   <div className="min-w-48 flex-1">
                     <p className="text-xl font-semibold">{item.name}</p>
                     <p className="font-mono text-sm text-slate-600">{item.internalCode}</p>

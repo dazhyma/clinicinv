@@ -16,6 +16,7 @@ import { isAdmin, type Actor } from '@/domain/actor';
 import { errors } from '@/domain/errors';
 import { getItem } from '@/domain/items';
 import { formatCents } from '@/domain/money';
+import { formatCentiml, liquidLineTotalCents, parseMlToCentiml, vialCostToPerMlMicros } from '@/domain/liquid';
 import {
   createPack,
   deletePack,
@@ -46,6 +47,9 @@ export interface PackComponentView {
   unitOfMeasurement: string;
   /** Сколько единиц предмета входит в пак. */
   quantity: number;
+  liquidAmountCentiml: number | null;
+  liquidAmountFormatted: string | null;
+  trackingMethod: 'standard' | 'liquid';
   itemQuantityInStock: number;
   itemStatus: EntityStatus;
   unitCostCents?: number;
@@ -66,7 +70,6 @@ export interface PackView {
   internalCode: string;
   barcodeValue: string;
   name: string;
-  photoUrl: string | null;
   notes: string | null;
   status: EntityStatus;
   archivedAtMs: number | null;
@@ -92,13 +95,21 @@ export function toPackView(
       referenceNumber: component.item.referenceNumber,
       unitOfMeasurement: component.item.unitOfMeasurement,
       quantity: component.quantity,
+      liquidAmountCentiml: component.liquidAmountCentiml,
+      liquidAmountFormatted: component.liquidAmountCentiml == null ? null : formatCentiml(component.liquidAmountCentiml),
+      trackingMethod: component.item.trackingMethod,
       itemQuantityInStock: component.item.currentQuantity,
       itemStatus: component.item.status,
     };
 
     if (!options.showCost) return base;
 
-    const lineTotal = component.item.currentUnitCostCents * component.quantity;
+    const lineTotal = component.item.trackingMethod === 'liquid' && component.liquidAmountCentiml
+      ? liquidLineTotalCents(
+          component.liquidAmountCentiml,
+          vialCostToPerMlMicros(component.item.currentUnitCostCents, component.item.liquidVolumePerVialCentiml!),
+        )
+      : component.item.currentUnitCostCents * component.quantity;
     return {
       ...base,
       unitCostCents: component.item.currentUnitCostCents,
@@ -113,7 +124,6 @@ export function toPackView(
     internalCode: pack.internalCode,
     barcodeValue: pack.barcodeValue,
     name: pack.name,
-    photoUrl: pack.photoUrl,
     notes: pack.notes,
     status: pack.status,
     archivedAtMs: pack.archivedAt?.getTime() ?? null,
@@ -127,7 +137,12 @@ export function toPackView(
   // §6.4: считается здесь и сейчас по текущим ценам. Изменение цены предмета
   // меняет это число автоматически и не касается завершённых операций (§11.3).
   const costCents = composition.reduce(
-    (total, component) => total + component.item.currentUnitCostCents * component.quantity,
+    (total, component) => total + (component.item.trackingMethod === 'liquid' && component.liquidAmountCentiml
+      ? liquidLineTotalCents(
+          component.liquidAmountCentiml,
+          vialCostToPerMlMicros(component.item.currentUnitCostCents, component.item.liquidVolumePerVialCentiml!),
+        )
+      : component.item.currentUnitCostCents * component.quantity),
     0,
   );
 
@@ -176,14 +191,13 @@ export function getPackForActor(
 export interface PackComponentFormInput {
   itemId?: RawFormValue;
   quantity?: RawFormValue;
+  liquidAmountMl?: RawFormValue;
 }
 
 export interface PackFormInput {
   name?: RawFormValue;
   notes?: RawFormValue;
   status?: RawFormValue;
-  /** URL уже сохранённого файла; загрузку выполняет `'use server'`-обёртка. */
-  photoUrl?: string | null;
   components?: PackComponentFormInput[];
 }
 
@@ -191,8 +205,6 @@ export interface SavedPack {
   packId: number;
   internalCode: string;
   name: string;
-  /** URL прежней фотографии, если она была заменена: файл можно удалить. */
-  replacedPhotoUrl: string | null;
 }
 
 export interface DeletedPack {
@@ -200,7 +212,6 @@ export interface DeletedPack {
   internalCode: string;
   name: string;
   disposition: 'deleted' | 'archived';
-  photoUrl: string | null;
 }
 
 export function deletePackAction(
@@ -216,19 +227,19 @@ export function deletePackAction(
       internalCode: result.pack.internalCode,
       name: result.pack.name,
       disposition: result.disposition,
-      photoUrl: result.photoUrl,
     };
   });
 }
 
 /** Имя поля ошибки строки состава. Совпадает с id инпута в форме. */
-export function componentFieldName(index: number, field: 'itemId' | 'quantity'): string {
+export function componentFieldName(index: number, field: 'itemId' | 'quantity' | 'liquidAmountMl'): string {
   return `component-${index}-${field}`;
 }
 
 interface ValidatedComponent {
   itemId: number;
   quantity: number;
+  liquidAmountCentiml: number | null;
 }
 
 /**
@@ -249,23 +260,29 @@ function validateComponents(
   rows.forEach((row, index) => {
     const rawItemId = v.text(row.itemId);
     const rawQuantity = v.text(row.quantity);
-    if (!rawItemId && !rawQuantity) return;
+    const rawLiquid = v.text(row.liquidAmountMl);
+    if (!rawItemId && !rawQuantity && !rawLiquid) return;
 
     const itemId = v.requiredInteger(componentFieldName(index, 'itemId'), rawItemId, 'Item', {
       min: 1,
     });
-    const quantity = v.requiredInteger(
-      componentFieldName(index, 'quantity'),
-      rawQuantity,
-      'Quantity',
-      { min: 1 },
-    );
-    if (!itemId || !quantity) return;
+    if (!itemId) return;
 
     const item = getItem(db, itemId);
     if (!item) {
       v.add(componentFieldName(index, 'itemId'), 'Item not found');
       return;
+    }
+    let quantity = 0;
+    let liquidAmountCentiml: number | null = null;
+    if (item.trackingMethod === 'liquid') {
+      try {
+        liquidAmountCentiml = parseMlToCentiml(rawLiquid, 'Amount in Pack');
+      } catch (error) {
+        v.add(componentFieldName(index, 'liquidAmountMl'), error instanceof Error ? error.message : 'Amount in ml is invalid');
+      }
+    } else {
+      quantity = v.requiredInteger(componentFieldName(index, 'quantity'), rawQuantity, 'Quantity', { min: 1 });
     }
     if (seen.has(itemId)) {
       v.add(
@@ -276,7 +293,9 @@ function validateComponents(
     }
 
     seen.set(itemId, index);
-    components.push({ itemId, quantity });
+    if ((item.trackingMethod === 'standard' && !quantity) ||
+        (item.trackingMethod === 'liquid' && !liquidAmountCentiml)) return;
+    components.push({ itemId, quantity, liquidAmountCentiml });
   });
 
   if (components.length === 0 && !v.hasErrors) {
@@ -309,8 +328,7 @@ export function createPackAction(
   actor: Actor,
   input: PackFormInput,
 ): ActionResult<SavedPack> {
-  // Роль — до валидации: Staff не должен даже узнавать состав формы (§18.22).
-  if (!isAdmin(actor)) return forbidden('create pack');
+  // Новое ТЗ: создание Pack доступно Staff и Admin; редактирование остаётся Admin-only.
 
   const v = new FieldValidator();
   const fields = validatePackFields(db, input, v);
@@ -324,7 +342,6 @@ export function createPackAction(
       name: fields.name,
       notes: fields.notes,
       composition: fields.components,
-      photoUrl: input.photoUrl ?? null,
       ...(status ? { status } : {}),
     });
 
@@ -332,7 +349,6 @@ export function createPackAction(
       packId: created.id,
       internalCode: created.internalCode,
       name: created.name,
-      replacedPhotoUrl: null,
     };
   });
 }
@@ -364,13 +380,10 @@ export function updatePackAction(
     const existing = getPack(db, packId);
     if (!existing) throw errors.packNotFound(packId);
 
-    const photoChanged = input.photoUrl !== undefined && input.photoUrl !== existing.photoUrl;
-
     const updated = updatePack(db, actor, packId, {
       name: fields.name,
       notes: fields.notes,
       composition: fields.components,
-      ...(photoChanged ? { photoUrl: input.photoUrl ?? null } : {}),
       ...(status ? { status } : {}),
     });
 
@@ -378,7 +391,6 @@ export function updatePackAction(
       packId: updated.id,
       internalCode: updated.internalCode,
       name: updated.name,
-      replacedPhotoUrl: photoChanged ? existing.photoUrl : null,
     };
   });
 }

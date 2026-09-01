@@ -20,14 +20,19 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
   addItemToOperationAction,
+  addMissingItemAction,
   changeLineQuantityAction,
   changeOperationDoctorAction,
   deleteVoidedOperationAction,
   finishOperationAction,
+  editFinishedLineCostAction,
+  editOrTimeAction,
   scanIntoOperationAction,
   searchPastSurgeriesByPatientIdAction,
   searchItemsForOperationAction,
   startOperationAction,
+  startOrTimerAction,
+  stopOrTimerAction,
   undoLastScanAction,
   voidOperationAction,
   type FinishedOperation,
@@ -72,6 +77,7 @@ export async function startOperationFormAction(
   const result = startOperationAction(getDb(), auth.actor, {
     doctorId: String(formData.get('doctorId') ?? ''),
     patientId: String(formData.get('patientId') ?? ''),
+    surgeryTypeId: String(formData.get('surgeryTypeId') ?? ''),
   });
   if (!result.ok) return { error: result.error, fieldErrors: result.fieldErrors };
 
@@ -135,6 +141,7 @@ export interface ScanRequest {
   operationId: number;
   barcode: string;
   clientEventId: string;
+  amountUsedMl?: string;
 }
 
 export async function scanBarcodeAction(
@@ -149,6 +156,7 @@ export interface AddItemRequest {
   operationId: number;
   itemId: number;
   quantity?: number;
+  amountUsedMl?: string;
   clientEventId: string;
 }
 
@@ -166,6 +174,27 @@ export async function searchItemsAction(
   const auth = await actorOrFailure();
   if ('failure' in auth) return auth.failure;
   return searchItemsForOperationAction(getDb(), auth.actor, query);
+}
+
+export async function addMissingItemServerAction(input: AddItemRequest): Promise<ActionResult<OperationMutationResult>> {
+  const auth = await actorOrFailure(); if ('failure' in auth) return auth.failure;
+  const result = addMissingItemAction(getDb(), auth.actor, input);
+  if (result.ok) { revalidatePath('/operations'); revalidatePath(`/operations/${input.operationId}`); }
+  return result;
+}
+
+export async function editAppliedCostServerAction(input: { operationId: number; lineId: number; cost: string; reason?: string }): Promise<ActionResult<OperationStateView>> {
+  const auth = await actorOrFailure(); if ('failure' in auth) return auth.failure;
+  const result = editFinishedLineCostAction(getDb(), auth.actor, input);
+  if (result.ok) revalidatePath(`/operations/${input.operationId}`);
+  return result;
+}
+
+export async function editOrTimeServerAction(input: { operationId: number; startedAt: string; endedAt: string; reason?: string }): Promise<ActionResult<OperationStateView>> {
+  const auth = await actorOrFailure(); if ('failure' in auth) return auth.failure;
+  const result = editOrTimeAction(getDb(), auth.actor, input);
+  if (result.ok) revalidatePath(`/operations/${input.operationId}`);
+  return result;
 }
 
 // --- Исправления (§7.9) -----------------------------------------------------
@@ -199,15 +228,30 @@ export async function undoLastScanServerAction(input: {
 
 export async function finishOperationServerAction(
   operationId: number,
+  stopRunningTimer = false,
 ): Promise<ActionResult<FinishedOperation>> {
   const auth = await actorOrFailure();
   if ('failure' in auth) return auth.failure;
 
-  const result = finishOperationAction(getDb(), auth.actor, operationId);
+  const result = finishOperationAction(getDb(), auth.actor, operationId, stopRunningTimer);
   if (result.ok) {
     revalidatePath('/operations');
     revalidatePath(`/operations/${operationId}`);
   }
+  return result;
+}
+
+export async function startOrTimerServerAction(operationId: number): Promise<ActionResult<OperationStateView>> {
+  const auth = await actorOrFailure(); if ('failure' in auth) return auth.failure;
+  const result = startOrTimerAction(getDb(), auth.actor, operationId);
+  if (result.ok) revalidatePath(`/operations/${operationId}`);
+  return result;
+}
+
+export async function stopOrTimerServerAction(operationId: number): Promise<ActionResult<OperationStateView>> {
+  const auth = await actorOrFailure(); if ('failure' in auth) return auth.failure;
+  const result = stopOrTimerAction(getDb(), auth.actor, operationId);
+  if (result.ok) revalidatePath(`/operations/${operationId}`);
   return result;
 }
 

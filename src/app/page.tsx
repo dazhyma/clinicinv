@@ -48,7 +48,10 @@ export default async function HomePage() {
       </div>
 
       {isAdmin ? (
-        <div className="mt-6">
+        <div className="mt-6 flex flex-wrap gap-3">
+          <Link href="/reports" className={buttonClassName({ variant: 'secondary' })}>
+            Reports
+          </Link>
           <Link
             href="/settings"
             className={buttonClassName({ variant: 'secondary' })}

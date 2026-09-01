@@ -4,7 +4,6 @@ import { getItemForActor } from '@/actions/items';
 import { requirePage } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import { AppHeader } from '../../../_components/app-header';
-import { ItemPhoto } from '../../../_components/item-photo';
 import { DeleteDialog } from '../../_components/delete-dialog';
 import { deleteItemFormAction } from '../../actions';
 import { itemsReturnPath } from '../../_components/items-return-path';
@@ -39,17 +38,19 @@ export default async function ItemDetailPage({
 
       <section className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
         <div className="flex flex-wrap gap-5">
-          <ItemPhoto photoUrl={item.photoUrl} name={item.name} size={128} />
           <div className="min-w-52 flex-1">
             <p className="text-lg text-slate-600">
               Item Code: <span className="font-mono">{item.internalCode}</span>
             </p>
             <p className="mt-2 text-3xl font-bold">
-              {item.currentQuantity}{' '}
-              <span className="text-lg font-normal text-slate-600">{item.unitOfMeasurement}</span>
+              {item.trackingMethod === 'liquid' ? item.liquidTotalFormatted : item.currentQuantity}{' '}
+              <span className="text-lg font-normal text-slate-600">{item.trackingMethod === 'liquid' ? 'ml available' : item.unitOfMeasurement}</span>
             </p>
             <dl className="mt-4 grid gap-x-6 gap-y-3 sm:grid-cols-2">
               <Detail label="Reference Number" value={item.referenceNumber} />
+              <Detail label="Manufacturer" value={item.manufacturer} />
+              <Detail label="Tracking Method" value={item.trackingMethod === 'liquid' ? 'Liquid Volume (ml)' : 'Standard Units'} />
+              {item.trackingMethod === 'liquid' ? <Detail label="Physical Stock" value={`${item.liquidUnopenedVials} unopened vials · ${(item.liquidOpenVialCentiml / 100).toFixed(2)} ml in open vial`} /> : null}
               <Detail label="Category" value={item.category} />
               <Detail label="Storage Location" value={item.storageLocation} />
               <Detail
@@ -58,7 +59,7 @@ export default async function ItemDetailPage({
               />
               <Detail label="Status" value={item.status} />
               {'unitCostFormatted' in item ? (
-                <Detail label="Unit Cost" value={item.unitCostFormatted ?? null} />
+                <Detail label={item.trackingMethod === 'liquid' ? 'Cost per Vial' : 'Unit Cost'} value={item.unitCostFormatted ?? null} />
               ) : null}
             </dl>
             {item.notes ? <p className="mt-4 text-slate-700">{item.notes}</p> : null}

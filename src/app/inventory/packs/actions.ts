@@ -3,7 +3,7 @@
 /**
  * Тонкие серверные обёртки над слоем действий для паков (§6.3, §6.7).
  *
- * Плумбинг Next и ничего больше: сессия, разбор FormData, загрузка фотографии,
+ * Плумбинг Next и ничего больше: сессия, разбор FormData,
  * revalidate, redirect. Роль, валидация и формулировки ошибок — в
  * `src/actions/packs.ts`, работа с составом — в `src/domain/packs.ts` (D-16).
  *
@@ -24,7 +24,6 @@ import { requireActor } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import { isAdmin, type Actor } from '@/domain/actor';
 import { errors } from '@/domain/errors';
-import { deletePhotoByUrl, storeItemPhoto } from '@/photos/storage';
 import type { FormState } from '../actions';
 
 async function actorOrState(): Promise<{ actor: Actor } | { state: FormState }> {
@@ -49,20 +48,14 @@ function text(formData: FormData, name: string): string | undefined {
 function componentsFromForm(formData: FormData): PackComponentFormInput[] {
   const itemIds = formData.getAll('componentItemId');
   const quantities = formData.getAll('componentQuantity');
-  const length = Math.max(itemIds.length, quantities.length);
+  const liquidAmounts = formData.getAll('componentLiquidAmountMl');
+  const length = Math.max(itemIds.length, quantities.length, liquidAmounts.length);
 
   return Array.from({ length }, (_, index) => ({
     itemId: typeof itemIds[index] === 'string' ? (itemIds[index] as string) : undefined,
     quantity: typeof quantities[index] === 'string' ? (quantities[index] as string) : undefined,
+    liquidAmountMl: typeof liquidAmounts[index] === 'string' ? (liquidAmounts[index] as string) : undefined,
   }));
-}
-
-async function readPhoto(formData: FormData): Promise<string | null | undefined> {
-  if (text(formData, 'removePhoto') === 'on') return null;
-
-  const file = formData.get('photo');
-  if (!(file instanceof File) || file.size === 0) return undefined;
-  return storeItemPhoto(file);
 }
 
 function packFormInput(formData: FormData): PackFormInput {
@@ -82,27 +75,10 @@ export async function createPackFormAction(
 ): Promise<FormState> {
   const auth = await actorOrState();
   if ('state' in auth) return auth.state;
-  if (auth.actor.role !== 'Admin') {
-    const failure = toFailure(errors.forbidden('create pack'));
-    return { ok: false, error: failure.error, fieldErrors: failure.fieldErrors };
-  }
 
-  let photoUrl: string | null | undefined;
-  try {
-    photoUrl = await readPhoto(formData);
-  } catch (error) {
-    const failure = toFailure(error);
-    return { ok: false, error: failure.error, fieldErrors: failure.fieldErrors };
-  }
-
-  const result = createPackAction(getDb(), auth.actor, {
-    ...packFormInput(formData),
-    photoUrl: photoUrl ?? null,
-  });
+  const result = createPackAction(getDb(), auth.actor, packFormInput(formData));
 
   if (!result.ok) {
-    // Файл уже сохранён, а пак — нет: осиротевший файл убираем сразу.
-    await deletePhotoByUrl(photoUrl);
     return { ok: false, error: result.error, fieldErrors: result.fieldErrors };
   }
 
@@ -128,25 +104,11 @@ export async function updatePackFormAction(
     return { ok: false, error: 'Pack not found' };
   }
 
-  let photoUrl: string | null | undefined;
-  try {
-    photoUrl = await readPhoto(formData);
-  } catch (error) {
-    const failure = toFailure(error);
-    return { ok: false, error: failure.error, fieldErrors: failure.fieldErrors };
-  }
-
-  const result = updatePackAction(getDb(), auth.actor, packId, {
-    ...packFormInput(formData),
-    ...(photoUrl !== undefined ? { photoUrl } : {}),
-  });
+  const result = updatePackAction(getDb(), auth.actor, packId, packFormInput(formData));
 
   if (!result.ok) {
-    await deletePhotoByUrl(photoUrl);
     return { ok: false, error: result.error, fieldErrors: result.fieldErrors };
   }
-
-  await deletePhotoByUrl(result.data.replacedPhotoUrl);
 
   revalidatePath('/inventory/packs');
   revalidatePath(`/inventory/packs/${packId}/edit`);
@@ -168,7 +130,6 @@ export async function deletePackFormAction(
   const result = deletePackAction(getDb(), auth.actor, packId);
   if (!result.ok) return { ok: false, error: result.error, fieldErrors: result.fieldErrors };
 
-  if (result.data.disposition === 'deleted') await deletePhotoByUrl(result.data.photoUrl);
   revalidatePath('/inventory/packs');
   revalidatePath(`/inventory/packs/${packId}`);
   redirect(

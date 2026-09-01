@@ -5,11 +5,10 @@ import { useActionState, useState } from 'react';
 import type { ItemView } from '@/actions/items';
 import type { PackView } from '@/actions/packs';
 import { formatCents } from '@/domain/money';
-import { PHOTO_ACCEPT_ATTRIBUTE } from '@/photos/shared';
+import { liquidLineTotalCents } from '@/domain/liquid';
 import { useUnsavedChanges } from '../../_components/use-unsaved-changes';
 import type { FormState } from '../actions';
 import { ErrorBanner, Field, SubmitButton } from './form-field';
-import { ItemPhoto } from '../../_components/item-photo';
 import { Select } from '../../_components/ui';
 
 const initialState: FormState = {};
@@ -29,7 +28,7 @@ function makeRow(itemId = '', quantity = '1'): CompositionRow {
 /**
  * Форма Add New Pack (§6.3) и редактирования пака (§6.7).
  *
- * Поля ровно по §6.2: название, необязательная фотография, состав с
+ * Поля ровно по §6.2: название, состав с
  * количествами, активный/неактивный статус, необязательные заметки.
  *
  * Чего в форме НЕТ и быть не должно:
@@ -62,7 +61,12 @@ export function PackForm({
   const [rows, setRows] = useState<CompositionRow[]>(() =>
     pack && pack.components.length > 0
       ? pack.components.map((component) =>
-          makeRow(String(component.itemId), String(component.quantity)),
+          makeRow(
+            String(component.itemId),
+            component.trackingMethod === 'liquid'
+              ? component.liquidAmountFormatted ?? ''
+              : String(component.quantity),
+          ),
         )
       : [makeRow()],
   );
@@ -84,8 +88,10 @@ export function PackForm({
   for (const row of rows) {
     const item = itemsById.get(row.itemId);
     const quantity = Number(row.quantity);
-    if (item?.unitCostCents === undefined || !Number.isFinite(quantity)) continue;
-    calculatedCents += item.unitCostCents * Math.max(0, Math.trunc(quantity));
+    if (item?.unitCostCents === undefined || !Number.isFinite(quantity) || quantity <= 0) continue;
+    calculatedCents += item.trackingMethod === 'liquid' && item.costPerMlMicros !== undefined
+      ? liquidLineTotalCents(Math.round(quantity * 100), item.costPerMlMicros)
+      : item.unitCostCents * Math.max(0, Math.trunc(quantity));
   }
 
   return (
@@ -105,8 +111,8 @@ export function PackForm({
             Internal code: <strong className="font-mono">{pack.internalCode}</strong>
           </p>
           <p className="mt-1 text-sm text-slate-500">
-            The internal code and its barcode are permanent: renaming the pack, replacing its photo
-            or changing its contents never changes them (§6.7).
+            The internal code and its barcode are permanent: renaming the pack or changing its
+            contents never changes them (§6.7).
           </p>
         </section>
       ) : null}
@@ -114,41 +120,6 @@ export function PackForm({
       <Field name="name" label="Pack Name" required error={fieldErrors.name}>
         {(props) => <input type="text" defaultValue={pack?.name ?? ''} autoFocus {...props} />}
       </Field>
-
-      {/* §6.2: фотография пака необязательна. */}
-      <div className="flex flex-col gap-2">
-        <label htmlFor="photo" className="text-base font-medium">
-          Photo <span className="ml-2 text-sm font-normal text-slate-500">optional</span>
-        </label>
-        <div className="flex items-center gap-4">
-          <ItemPhoto photoUrl={pack?.photoUrl ?? null} name={pack?.name ?? 'New pack'} size={72} />
-          <div className="flex-1">
-            <input
-              id="photo"
-              name="photo"
-              type="file"
-              accept={PHOTO_ACCEPT_ATTRIBUTE}
-              aria-invalid={fieldErrors.photo ? true : undefined}
-              aria-describedby={fieldErrors.photo ? 'photo-error' : 'photo-hint'}
-              className="w-full text-base"
-            />
-            <p id="photo-hint" className="mt-1 text-sm text-slate-500">
-              JPG, PNG or WebP. Do not upload photos containing patient information.
-            </p>
-            {fieldErrors.photo ? (
-              <p id="photo-error" role="alert" className="text-base font-medium text-red-700">
-                {fieldErrors.photo}
-              </p>
-            ) : null}
-            {pack?.photoUrl ? (
-              <label className="mt-2 flex items-center gap-2 text-base">
-                <input type="checkbox" name="removePhoto" className="h-5 w-5" />
-                Remove the current photo
-              </label>
-            ) : null}
-          </div>
-        </div>
-      </div>
 
       {/* --- Состав (§6.3, шаги 3–4) --- */}
       <fieldset className="flex flex-col gap-3 rounded-2xl border border-slate-200 p-4">
@@ -207,15 +178,20 @@ export function PackForm({
 
                 <div className="flex w-32 flex-col gap-1">
                   <label htmlFor={`component-${index}-quantity`} className="text-sm text-slate-600">
-                    Quantity
+                    {selected?.trackingMethod === 'liquid' ? 'Amount (ml)' : 'Quantity'}
                   </label>
                   <input
+                    type="hidden"
+                    name={selected?.trackingMethod === 'liquid' ? 'componentQuantity' : 'componentLiquidAmountMl'}
+                    value=""
+                  />
+                  <input
                     id={`component-${index}-quantity`}
-                    name="componentQuantity"
+                    name={selected?.trackingMethod === 'liquid' ? 'componentLiquidAmountMl' : 'componentQuantity'}
                     type="number"
-                    inputMode="numeric"
-                    min={1}
-                    step={1}
+                    inputMode={selected?.trackingMethod === 'liquid' ? 'decimal' : 'numeric'}
+                    min={selected?.trackingMethod === 'liquid' ? '0.01' : '1'}
+                    step={selected?.trackingMethod === 'liquid' ? '0.01' : '1'}
                     value={row.quantity}
                     onChange={(event) => updateRow(row.key, { quantity: event.target.value })}
                     aria-invalid={quantityError ? true : undefined}
@@ -239,7 +215,9 @@ export function PackForm({
 
                 {selected?.unitCostFormatted ? (
                   <p className="w-28 pb-3 text-base text-slate-600">
-                    {selected.unitCostFormatted} each
+                    {selected.trackingMethod === 'liquid'
+                      ? `${selected.costPerMlFormatted ?? '$0'} / ml`
+                      : `${selected.unitCostFormatted} each`}
                   </p>
                 ) : null}
 

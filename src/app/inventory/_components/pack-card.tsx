@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import type { PackView } from '@/actions/packs';
-import { ItemPhoto } from '../../_components/item-photo';
 import { ButtonLink, StatusBadge } from '../../_components/ui';
 
 /**
@@ -20,7 +19,6 @@ import { ButtonLink, StatusBadge } from '../../_components/ui';
 export function PackCard({ pack, canEdit }: { pack: PackView; canEdit: boolean }) {
   return (
     <li className="app-card flex flex-wrap items-start gap-4 p-4">
-      <ItemPhoto photoUrl={pack.photoUrl} name={pack.name} size={64} />
 
       <div className="min-w-56 flex-1">
         <div className="flex flex-wrap items-center gap-2">

@@ -39,6 +39,14 @@ export const AUDIT_ACTIONS = {
   operationFinished: 'operation.finished',
   operationVoided: 'operation.voided',
   operationDeleted: 'operation.deleted',
+  operationItemAddedAfterFinish: 'operation.item_added_after_finish',
+  operationAppliedCostChanged: 'operation.applied_cost_changed',
+  operationTimerStarted: 'operation.timer_started',
+  operationTimerStopped: 'operation.timer_stopped',
+  operationTimeChanged: 'operation.time_changed',
+  surgeryTypeCreated: 'surgery_type.created',
+  surgeryTypeUpdated: 'surgery_type.updated',
+  surgeryTypeDeactivated: 'surgery_type.deactivated',
   settingChanged: 'setting.changed',
 } as const;
 

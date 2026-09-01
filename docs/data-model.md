@@ -30,7 +30,6 @@
 | `internal_code` | text | NOT NULL | **U-DB**. Формат `ITM-000127`. Присваивается системой, постоянен, не переиспользуется, не редактируется через форму | §5.5, §18.5, §18.7 |
 | `barcode_value` | text | NOT NULL | **U-DB**. Техническая копия для сканирования; всегда равна `internal_code` | §5.5, §18.5 |
 | `name` | text | NOT NULL | Item Name — обязательное поле формы | §5.4 |
-| `photo_url` | text | NULL | Ссылка на защищённый файл; прямой публичный доступ запрещён (NFR-17) | §5.4, §13, §15 |
 | `reference_number` | text | NULL | Reference / Catalog Number. Индексируется для поиска | §5.4, §5.3 |
 | `current_unit_cost` | decimal(12,2) | NOT NULL | ≥ 0. **Cost, не продажная цена.** Изменение влияет только на будущее | §5.4, §11.1, §5.7 |
 | `unit_of_measurement` | text / enum ⚠ | NOT NULL | each, box, pack, pair, mL, bottle, roll + настраиваемые | §5.4 |
@@ -71,7 +70,6 @@
 | `internal_code` | text | NOT NULL | **U-DB**. Формат `PCK-000015`. Постоянен | §6.3, §18.6 |
 | `barcode_value` | text | NOT NULL | **U-DB** + уникальность в общем пространстве с Item | §6.2, §18.6 |
 | `name` | text | NOT NULL | | §6.2, §6.3 |
-| `photo_url` | text | NULL | | §6.2 |
 | `notes` | text | NULL | Запрет пациентских данных | §6.2 |
 | `status` | enum(active, inactive) | NOT NULL | | §6.2 |
 | `created_at` | timestamp | NOT NULL | | §17.2 |

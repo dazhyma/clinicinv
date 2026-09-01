@@ -3,7 +3,6 @@ import { getInventoryHistoryForActor } from '@/actions/inventory-history';
 import { requirePage } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import { AppHeader } from '../../../../_components/app-header';
-import { ItemPhoto } from '../../../../_components/item-photo';
 import { formatDateTime } from '../../../../operations/_components/format';
 import { DeleteDialog } from '../../../_components/delete-dialog';
 import { deleteInventoryCountFormAction } from '../../actions';
@@ -56,7 +55,6 @@ export default async function InventoryHistoryDetailPage({
         {result.lines.map((line) => (
           <li key={line.id} className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
             <div className="flex flex-wrap items-center gap-4">
-              <ItemPhoto photoUrl={line.photoUrl} name={line.name} size={64} />
               <div className="min-w-48 flex-1">
                 <p className="text-xl font-semibold">{line.name}</p>
                 <p className="font-mono text-sm text-slate-500">{line.internalCode}</p>
@@ -67,15 +65,23 @@ export default async function InventoryHistoryDetailPage({
                 ) : null}
               </div>
               <div className="grid w-full grid-cols-2 gap-3 text-center sm:w-auto sm:grid-cols-4">
-                <CountValue label="Expected" value={line.expectedQuantity} />
-                <CountValue label="Actual" value={line.countedQuantity} />
+                <CountValue label="Expected" value={line.trackingMethod === 'liquid'
+                  ? `${line.expectedUnopenedVials ?? 0} unopened + ${line.expectedOpenVialMl ?? '0.00'} ml open`
+                  : line.expectedQuantity} />
+                <CountValue label="Actual" value={line.trackingMethod === 'liquid'
+                  ? `${line.countedUnopenedVials ?? 0} unopened + ${line.countedOpenVialMl ?? '0.00'} ml open`
+                  : line.countedQuantity} />
                 <CountValue
                   label="Difference"
-                  value={line.difference}
+                  value={line.trackingMethod === 'liquid'
+                    ? `${line.difference > 0 ? '+' : ''}${(line.difference / 100).toFixed(2)} ml`
+                    : line.difference}
                   signed
                   emphasis={line.difference !== 0}
                 />
-                <CountValue label="Final" value={line.finalQuantity} />
+                <CountValue label="Final" value={line.trackingMethod === 'liquid'
+                  ? `${line.finalUnopenedVials ?? 0} unopened + ${line.finalOpenVialMl ?? '0.00'} ml open`
+                  : line.finalQuantity} />
               </div>
             </div>
             <p className="mt-3 text-sm text-slate-500">
@@ -131,14 +137,16 @@ function CountValue({
   emphasis = false,
 }: {
   label: string;
-  value: number;
+  value: number | string;
   signed?: boolean;
   emphasis?: boolean;
 }) {
   return (
     <div className={`rounded-xl px-3 py-2 ${emphasis ? 'bg-amber-50' : 'bg-slate-50'}`}>
       <p className="text-sm text-slate-500">{label}</p>
-      <p className="text-2xl font-bold">{signed && value > 0 ? `+${value}` : value}</p>
+      <p className="text-2xl font-bold">
+        {signed && typeof value === 'number' && value > 0 ? `+${value}` : value}
+      </p>
     </div>
   );
 }

@@ -18,6 +18,7 @@ import { formatDateTime } from '../_components/format';
 import { OperationScreen } from '../_components/operation-screen';
 import { SummaryTable } from '../_components/summary-table';
 import { VoidOperationButton } from '../_components/void-dialog';
+import { FinishedAdminActions } from '../_components/finished-admin-actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -112,6 +113,8 @@ export default async function OperationPage({ params }: { params: Promise<{ id: 
           </section>
         ) : null}
 
+        {isAdmin && state.status === 'Finished' ? <FinishedAdminActions state={state} /> : null}
+
         {isAdmin && state.canVoid ? (
           <section className="mt-4 rounded-2xl border border-red-200 bg-white p-4">
             <VoidOperationButton
@@ -180,6 +183,10 @@ function OperationHeaderCard({ state }: { state: OperationStateView }) {
   ];
   // Снимок фамилии: архивирование или переименование врача карточку не меняет.
   if (state.doctorName) rows.push({ label: 'Doctor', value: state.doctorName });
+  rows.push({ label: 'Surgery Type', value: state.surgeryTypeName ?? 'Not provided' });
+  if (state.orStartedAtMs) rows.push({ label: 'OR Start', value: formatDateTime(state.orStartedAtMs) });
+  if (state.orEndedAtMs) rows.push({ label: 'OR End', value: formatDateTime(state.orEndedAtMs) });
+  if (state.orStartedAtMs && state.orEndedAtMs) rows.push({ label: 'OR Duration', value: formatDuration(state.orEndedAtMs - state.orStartedAtMs) });
   if (state.finishedAtMs) rows.push({ label: 'Finished', value: formatDateTime(state.finishedAtMs) });
   if (state.voidedAtMs) rows.push({ label: 'Voided', value: formatDateTime(state.voidedAtMs) });
   if (state.procedureCategory) rows.push({ label: 'Category', value: state.procedureCategory });
@@ -222,6 +229,11 @@ function OperationHeaderCard({ state }: { state: OperationStateView }) {
       </p>
     </section>
   );
+}
+
+function formatDuration(ms: number): string {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  return `${String(Math.floor(seconds / 3600)).padStart(2, '0')}:${String(Math.floor((seconds % 3600) / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
 /**

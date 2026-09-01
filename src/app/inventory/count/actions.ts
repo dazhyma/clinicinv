@@ -85,6 +85,8 @@ export async function recordCountLineServerAction(input: {
   countId: number;
   itemId: number;
   countedQuantity: number;
+  countedUnopenedVials?: number;
+  countedOpenVialMl?: string;
 }): Promise<ActionResult<RecordCountLineResult>> {
   const auth = await actorOrFailure();
   if ('failure' in auth) return auth.failure;

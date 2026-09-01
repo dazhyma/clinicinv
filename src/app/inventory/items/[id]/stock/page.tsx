@@ -5,7 +5,6 @@ import { getDb } from '@/db/client';
 import { AppHeader } from '../../../../_components/app-header';
 import { adjustStockFormAction, receiveStockFormAction } from '../../../actions';
 import { AdjustStockForm, ReceiveStockForm } from '../../../_components/stock-forms';
-import { ItemPhoto } from '../../../../_components/item-photo';
 import { itemsReturnPath } from '../../../_components/items-return-path';
 
 export const dynamic = 'force-dynamic';
@@ -52,10 +51,9 @@ export default async function ItemStockPage({
       />
 
       <section className="mb-6 flex items-center gap-4 rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-        <ItemPhoto photoUrl={item.photoUrl} name={item.name} size={64} />
         <div>
           <p className="text-lg">
-            In stock: <strong>{item.currentQuantity}</strong> {item.unitOfMeasurement}
+            In stock: <strong>{item.trackingMethod === 'liquid' ? item.liquidTotalFormatted : item.currentQuantity}</strong> {item.trackingMethod === 'liquid' ? 'ml' : item.unitOfMeasurement}
             {item.unitCostFormatted ? <> · Cost: {item.unitCostFormatted}</> : null}
           </p>
           <p className="font-mono text-sm text-slate-500">{item.internalCode}</p>

@@ -6,7 +6,7 @@
  * (COALESCE в ux_operation_items_agg) выражаются только в SQL.
  * Соответствие столбцов проверяется тестом tests/schema.test.ts.
  *
- * Деньги — целые центы. Количества — целые числа. Время — unix-мс UTC.
+ * Деньги — целые центы/микродоллары. Liquid volume — centi-ml. Время — unix-мс UTC.
  */
 import { sql } from 'drizzle-orm';
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
@@ -21,6 +21,9 @@ export type OperationStatus = (typeof OPERATION_STATUSES)[number];
 
 export const ENTITY_STATUSES = ['active', 'inactive'] as const;
 export type EntityStatus = (typeof ENTITY_STATUSES)[number];
+
+export const TRACKING_METHODS = ['standard', 'liquid'] as const;
+export type TrackingMethod = (typeof TRACKING_METHODS)[number];
 
 /**
  * §10.4 перечисляет шесть типов движений. Седьмой — `initial` — введён
@@ -44,12 +47,13 @@ export const SOURCE_TYPES = ['individual', 'pack'] as const;
 export type SourceType = (typeof SOURCE_TYPES)[number];
 
 export const ADJUSTMENT_REASONS = [
-  'damaged',
-  'expired',
-  'missing',
-  'inventory correction',
-  'received outside normal process',
-  'other',
+  'Inventory Count Correction',
+  'Received Quantity Correction',
+  'Used but Not Recorded',
+  'Damaged',
+  'Spilled',
+  'Discarded',
+  'Other',
 ] as const;
 export type AdjustmentReason = (typeof ADJUSTMENT_REASONS)[number];
 
@@ -138,6 +142,21 @@ export const barcodeRegistry = sqliteTable(
 
 // --- Item (§17.1) -----------------------------------------------------------
 
+export const manufacturers = sqliteTable(
+  'manufacturers',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    name: text('name').notNull(),
+    normalizedName: text('normalized_name').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    createdByAccountId: integer('created_by_account_id').references(() => userAccounts.id),
+  },
+  (t) => [
+    uniqueIndex('ux_manufacturers_normalized_name').on(t.normalizedName),
+    index('ix_manufacturers_name').on(t.name),
+  ],
+);
+
 export const items = sqliteTable(
   'items',
   {
@@ -147,13 +166,19 @@ export const items = sqliteTable(
     /** Всегда равен internalCode. Глобальная уникальность — в barcodeRegistry. */
     barcodeValue: text('barcode_value').notNull(),
     name: text('name').notNull(),
-    photoUrl: text('photo_url'),
     referenceNumber: text('reference_number'),
+    trackingMethod: text('tracking_method', { enum: TRACKING_METHODS }).notNull().default('standard'),
+    manufacturerId: integer('manufacturer_id').references(() => manufacturers.id),
     /** Cost, не продажная цена (§11.1). Целые центы. */
     currentUnitCostCents: integer('current_unit_cost_cents').notNull(),
     unitOfMeasurement: text('unit_of_measurement').notNull(),
     /** Инвариант: == SUM(inventory_movements.quantity_delta) по этому предмету. */
     currentQuantity: integer('current_quantity').notNull().default(0),
+    /** Liquid volume: один открытый флакон максимум; 1 ml = 100 centi-ml. */
+    liquidVolumePerVialCentiml: integer('liquid_volume_per_vial_centiml'),
+    liquidUnopenedVials: integer('liquid_unopened_vials').notNull().default(0),
+    liquidOpenVialCentiml: integer('liquid_open_vial_centiml').notNull().default(0),
+    liquidLowStockThresholdCentiml: integer('liquid_low_stock_threshold_centiml'),
     category: text('category'),
     storageLocation: text('storage_location'),
     lowStockThreshold: integer('low_stock_threshold'),
@@ -175,6 +200,8 @@ export const items = sqliteTable(
     index('ix_items_status').on(t.status),
     index('ix_items_archived_at').on(t.archivedAt),
     index('ix_items_current_quantity').on(t.currentQuantity),
+    index('ix_items_manufacturer').on(t.manufacturerId),
+    index('ix_items_tracking_method').on(t.trackingMethod),
   ],
 );
 
@@ -188,7 +215,6 @@ export const packs = sqliteTable(
     internalCode: text('internal_code').notNull(),
     barcodeValue: text('barcode_value').notNull(),
     name: text('name').notNull(),
-    photoUrl: text('photo_url'),
     notes: text('notes'),
     status: text('status', { enum: ENTITY_STATUSES }).notNull().default('active'),
     archivedAt: integer('archived_at', { mode: 'timestamp_ms' }),
@@ -219,6 +245,7 @@ export const packItems = sqliteTable(
       .notNull()
       .references(() => items.id),
     quantity: integer('quantity').notNull(),
+    liquidAmountCentiml: integer('liquid_amount_centiml'),
   },
   (t) => [
     uniqueIndex('ux_pack_items_pack_item').on(t.packId, t.itemId),
@@ -256,6 +283,24 @@ export const doctors = sqliteTable(
   ],
 );
 
+export const surgeryTypes = sqliteTable(
+  'surgery_types',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    name: text('name').notNull(),
+    normalizedName: text('normalized_name').notNull(),
+    status: text('status', { enum: ENTITY_STATUSES }).notNull().default('active'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+    createdByAccountId: integer('created_by_account_id').references(() => userAccounts.id),
+    updatedByAccountId: integer('updated_by_account_id').references(() => userAccounts.id),
+  },
+  (t) => [
+    uniqueIndex('ux_surgery_types_normalized_name').on(t.normalizedName),
+    index('ix_surgery_types_status_name').on(t.status, t.name),
+  ],
+);
+
 // --- Operation (§17.4) ------------------------------------------------------
 
 export const operations = sqliteTable(
@@ -281,6 +326,10 @@ export const operations = sqliteTable(
     patientIdEncrypted: text('patient_id_encrypted'),
     /** Keyed HMAC для точного поиска без расшифровки всей таблицы. */
     patientIdLookup: text('patient_id_lookup'),
+    surgeryTypeId: integer('surgery_type_id').references(() => surgeryTypes.id),
+    surgeryTypeNameSnapshot: text('surgery_type_name_snapshot'),
+    orStartedAt: integer('or_started_at', { mode: 'timestamp_ms' }),
+    orEndedAt: integer('or_ended_at', { mode: 'timestamp_ms' }),
     /** Фиксируется в момент Finish and Lock (§11.5). Целые центы. */
     totalCostSnapshotCents: integer('total_cost_snapshot_cents'),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
@@ -305,6 +354,8 @@ export const operations = sqliteTable(
     index('ix_operations_created').on(t.createdAt),
     index('ix_operations_category').on(t.procedureCategory),
     index('ix_operations_patient_id_lookup').on(t.patientIdLookup),
+    index('ix_operations_surgery_type').on(t.surgeryTypeId, t.finishedAt),
+    index('ix_operations_finished_at').on(t.status, t.finishedAt),
   ],
 );
 
@@ -326,11 +377,22 @@ export const operationItems = sqliteTable(
     itemNameSnapshot: text('item_name_snapshot').notNull(),
     internalCodeSnapshot: text('internal_code_snapshot').notNull(),
     referenceNumberSnapshot: text('reference_number_snapshot'),
+    manufacturerNameSnapshot: text('manufacturer_name_snapshot'),
+    trackingMethodSnapshot: text('tracking_method_snapshot', { enum: TRACKING_METHODS })
+      .notNull()
+      .default('standard'),
     unitOfMeasurementSnapshot: text('unit_of_measurement_snapshot').notNull(),
     quantity: integer('quantity').notNull(),
+    amountUsedCentiml: integer('amount_used_centiml'),
     /** Стоимость единицы на момент добавления. Никогда не пересчитывается (§18.15). */
     unitCostSnapshotCents: integer('unit_cost_snapshot_cents').notNull(),
+    appliedCostPerMeasureMicros: integer('applied_cost_per_measure_micros'),
     lineTotalCents: integer('line_total_cents').notNull(),
+    addedAfterFinish: integer('added_after_finish', { mode: 'boolean' }).notNull().default(false),
+    addedAfterFinishAt: integer('added_after_finish_at', { mode: 'timestamp_ms' }),
+    addedAfterFinishByAccountId: integer('added_after_finish_by_account_id').references(
+      () => userAccounts.id,
+    ),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
@@ -430,8 +492,16 @@ export const inventoryCountLines = sqliteTable(
     itemNameSnapshot: text('item_name_snapshot'),
     internalCodeSnapshot: text('internal_code_snapshot'),
     referenceNumberSnapshot: text('reference_number_snapshot'),
-    photoUrlSnapshot: text('photo_url_snapshot'),
     unitOfMeasurementSnapshot: text('unit_of_measurement_snapshot'),
+    trackingMethodSnapshot: text('tracking_method_snapshot', { enum: TRACKING_METHODS })
+      .notNull()
+      .default('standard'),
+    expectedUnopenedVials: integer('expected_unopened_vials'),
+    countedUnopenedVials: integer('counted_unopened_vials'),
+    expectedOpenVialCentiml: integer('expected_open_vial_centiml'),
+    countedOpenVialCentiml: integer('counted_open_vial_centiml'),
+    finalUnopenedVials: integer('final_unopened_vials'),
+    finalOpenVialCentiml: integer('final_open_vial_centiml'),
     finalQuantity: integer('final_quantity'),
     updatedByAccountId: integer('updated_by_account_id').references(() => userAccounts.id),
     updatedByRole: text('updated_by_role', { enum: USER_ROLES }),
@@ -471,6 +541,66 @@ export const inventoryMovements = sqliteTable(
     index('ix_inventory_movements_op_item_type').on(t.operationId, t.itemId, t.movementType),
     index('ix_inventory_movements_type_created').on(t.movementType, t.createdAt),
   ],
+);
+
+export const liquidInventoryMovements = sqliteTable(
+  'liquid_inventory_movements',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    itemId: integer('item_id').notNull().references(() => items.id),
+    movementType: text('movement_type', { enum: MOVEMENT_TYPES }).notNull(),
+    unopenedVialsDelta: integer('unopened_vials_delta').notNull(),
+    openVialCentimlDelta: integer('open_vial_centiml_delta').notNull(),
+    openVialCentimlBefore: integer('open_vial_centiml_before').notNull(),
+    openVialCentimlAfter: integer('open_vial_centiml_after').notNull(),
+    totalVolumeCentimlDelta: integer('total_volume_centiml_delta').notNull(),
+    operationId: integer('operation_id').references(() => operations.id),
+    inventoryCountId: integer('inventory_count_id').references(() => inventoryCounts.id),
+    reason: text('reason'),
+    vialCostAtReceiptCents: integer('vial_cost_at_receipt_cents'),
+    idempotencyKey: text('idempotency_key').notNull(),
+    createdByAccountId: integer('created_by_account_id').references(() => userAccounts.id),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    uniqueIndex('ux_liquid_movements_idempotency').on(t.idempotencyKey),
+    index('ix_liquid_movements_item_created').on(t.itemId, t.createdAt),
+    index('ix_liquid_movements_operation').on(t.operationId),
+    index('ix_liquid_movements_count').on(t.inventoryCountId),
+  ],
+);
+
+export const operationCostAdjustments = sqliteTable(
+  'operation_cost_adjustments',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    operationId: integer('operation_id').notNull().references(() => operations.id),
+    operationItemId: integer('operation_item_id').notNull().references(() => operationItems.id),
+    oldCostPerMeasureMicros: integer('old_cost_per_measure_micros').notNull(),
+    newCostPerMeasureMicros: integer('new_cost_per_measure_micros').notNull(),
+    oldLineTotalCents: integer('old_line_total_cents').notNull(),
+    newLineTotalCents: integer('new_line_total_cents').notNull(),
+    reason: text('reason'),
+    changedByAccountId: integer('changed_by_account_id').notNull().references(() => userAccounts.id),
+    changedAt: integer('changed_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('ix_operation_cost_adjustments_operation').on(t.operationId, t.changedAt)],
+);
+
+export const operationTimeAdjustments = sqliteTable(
+  'operation_time_adjustments',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    operationId: integer('operation_id').notNull().references(() => operations.id),
+    oldStartedAt: integer('old_started_at', { mode: 'timestamp_ms' }),
+    oldEndedAt: integer('old_ended_at', { mode: 'timestamp_ms' }),
+    newStartedAt: integer('new_started_at', { mode: 'timestamp_ms' }),
+    newEndedAt: integer('new_ended_at', { mode: 'timestamp_ms' }),
+    reason: text('reason'),
+    changedByAccountId: integer('changed_by_account_id').notNull().references(() => userAccounts.id),
+    changedAt: integer('changed_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('ix_operation_time_adjustments_operation').on(t.operationId, t.changedAt)],
 );
 
 // --- SystemSetting / AuditLog ----------------------------------------------
@@ -531,16 +661,21 @@ export const allTables = {
   loginAttempts,
   codeSequences,
   barcodeRegistry,
+  manufacturers,
   items,
   packs,
   packItems,
   doctors,
+  surgeryTypes,
   operations,
   operationItems,
   operationEvents,
   inventoryCounts,
   inventoryCountLines,
   inventoryMovements,
+  liquidInventoryMovements,
+  operationCostAdjustments,
+  operationTimeAdjustments,
   systemSettings,
   auditLog,
   itemHistoryEvents,
@@ -549,12 +684,15 @@ export const allTables = {
 export const NOW = sql`(CAST(strftime('%s', 'now') AS INTEGER) * 1000)`;
 
 export type ItemRow = typeof items.$inferSelect;
+export type ManufacturerRow = typeof manufacturers.$inferSelect;
 export type PackRow = typeof packs.$inferSelect;
 export type PackItemRow = typeof packItems.$inferSelect;
 export type DoctorRow = typeof doctors.$inferSelect;
+export type SurgeryTypeRow = typeof surgeryTypes.$inferSelect;
 export type OperationRow = typeof operations.$inferSelect;
 export type OperationItemRow = typeof operationItems.$inferSelect;
 export type InventoryMovementRow = typeof inventoryMovements.$inferSelect;
+export type LiquidInventoryMovementRow = typeof liquidInventoryMovements.$inferSelect;
 export type UserAccountRow = typeof userAccounts.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type InventoryCountRow = typeof inventoryCounts.$inferSelect;

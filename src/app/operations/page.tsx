@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { listDoctorsAction, operatingRoomsStatus } from '@/actions/doctors';
 import { listOperationsForActor } from '@/actions/operations';
+import { listSurgeryTypesAction } from '@/actions/surgery-types';
 import { requirePage } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import { AppHeader } from '../_components/app-header';
@@ -142,6 +143,7 @@ export default async function OperationsPage({
           doctors={doctors}
           hasActiveOperations={result.active.length > 0}
           rooms={rooms}
+          surgeryTypes={listSurgeryTypesAction(db, actor)}
         />
       </section>
 

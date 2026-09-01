@@ -10,7 +10,7 @@ const nextConfig: NextConfig = {
    */
   basePath: BASE_PATH,
   // Native modules must stay outside the bundler: better-sqlite3 (.node binding),
-  // @node-rs/argon2 (.node binding), sharp (used for photo downscaling in a later sprint).
+  // @node-rs/argon2 (.node binding), sharp (rasterisation of generated barcodes).
   serverExternalPackages: ['better-sqlite3', '@node-rs/argon2', 'sharp'],
   poweredByHeader: false,
   async headers() {

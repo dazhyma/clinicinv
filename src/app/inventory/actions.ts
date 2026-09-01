@@ -3,7 +3,7 @@
 /**
  * Тонкие серверные обёртки над слоем действий (`src/actions/*`).
  *
- * Здесь только плумбинг Next: сессия и роль, разбор FormData, загрузка файла,
+ * Здесь только плумбинг Next: сессия и роль, разбор FormData,
  * revalidate и redirect. Валидация, вызов домена и формулировки ошибок живут в
  * `src/actions/items.ts`; логика остатков — в `src/domain/*`.
  *
@@ -26,7 +26,6 @@ import { requireActor } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import { isAdmin, type Actor } from '@/domain/actor';
 import { errors } from '@/domain/errors';
-import { deletePhotoByUrl, storeItemPhoto } from '@/photos/storage';
 
 /** Состояние формы для `useActionState`. Сериализуемое. */
 export interface FormState {
@@ -59,24 +58,17 @@ function text(formData: FormData, name: string): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-/**
- * Загружает фотографию, если файл выбран (§13).
- * Возвращает `undefined`, когда поле не трогали — тогда текущее фото остаётся.
- */
-async function readPhoto(formData: FormData): Promise<string | null | undefined> {
-  if (text(formData, 'removePhoto') === 'on') return null;
-
-  const file = formData.get('photo');
-  if (!(file instanceof File) || file.size === 0) return undefined;
-  return storeItemPhoto(file);
-}
-
 function itemFormInput(formData: FormData): ItemFormInput {
   return {
     name: text(formData, 'name'),
+    trackingMethod: text(formData, 'trackingMethod'),
+    manufacturer: text(formData, 'manufacturer'),
     costPerUnit: text(formData, 'costPerUnit'),
     unitOfMeasurement: text(formData, 'unitOfMeasurement'),
     initialQuantity: text(formData, 'initialQuantity'),
+    initialUnopenedVials: text(formData, 'initialUnopenedVials'),
+    initialOpenVialMl: text(formData, 'initialOpenVialMl'),
+    volumePerVialMl: text(formData, 'volumePerVialMl'),
     referenceNumber: text(formData, 'referenceNumber'),
     category: text(formData, 'category'),
     storageLocation: text(formData, 'storageLocation'),
@@ -96,21 +88,9 @@ export async function createItemFormAction(
   if ('state' in auth) return auth.state;
   if (auth.actor.role !== 'Admin') return toStateFailure(errors.forbidden('create item'));
 
-  let photoUrl: string | null | undefined;
-  try {
-    photoUrl = await readPhoto(formData);
-  } catch (error) {
-    return toStateFailure(error);
-  }
-
-  const result = createItemAction(getDb(), auth.actor, {
-    ...itemFormInput(formData),
-    photoUrl: photoUrl ?? null,
-  });
+  const result = createItemAction(getDb(), auth.actor, itemFormInput(formData));
 
   if (!result.ok) {
-    // Файл уже сохранён, а предмет — нет: осиротевший файл убираем сразу.
-    await deletePhotoByUrl(photoUrl);
     return { ok: false, error: result.error, fieldErrors: result.fieldErrors };
   }
 
@@ -133,25 +113,11 @@ export async function updateItemFormAction(
     return { ok: false, error: 'Item not found' };
   }
 
-  let photoUrl: string | null | undefined;
-  try {
-    photoUrl = await readPhoto(formData);
-  } catch (error) {
-    return toStateFailure(error);
-  }
-
-  const result = updateItemAction(getDb(), auth.actor, itemId, {
-    ...itemFormInput(formData),
-    ...(photoUrl !== undefined ? { photoUrl } : {}),
-  });
+  const result = updateItemAction(getDb(), auth.actor, itemId, itemFormInput(formData));
 
   if (!result.ok) {
-    await deletePhotoByUrl(photoUrl);
     return { ok: false, error: result.error, fieldErrors: result.fieldErrors };
   }
-
-  // Старые фото сохраняются: завершённые Inventory Count хранят исторический
-  // photo snapshot и должны оставаться воспроизводимыми.
 
   revalidatePath('/inventory/catalog');
   revalidatePath(`/inventory/items/${itemId}/edit`);
@@ -170,7 +136,6 @@ export async function deleteItemFormAction(
   const result = deleteItemAction(getDb(), auth.actor, itemId);
   if (!result.ok) return { ok: false, error: result.error, fieldErrors: result.fieldErrors };
 
-  if (result.data.disposition === 'deleted') await deletePhotoByUrl(result.data.photoUrl);
   revalidatePath('/inventory/catalog');
   revalidatePath(`/inventory/items/${itemId}`);
   redirect(
@@ -224,6 +189,8 @@ export async function adjustStockFormAction(
     amount: text(formData, 'amount'),
     reason: text(formData, 'reason'),
     notes: text(formData, 'notes'),
+    unopenedVials: text(formData, 'unopenedVials'),
+    openVialMl: text(formData, 'openVialMl'),
     clientEventId: text(formData, 'clientEventId'),
   });
 

@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import type { AppDatabase } from '@/db/client';
-import { inventoryMovements } from '@/db/schema';
+import { inventoryMovements, liquidInventoryMovements } from '@/db/schema';
+import { formatCentiml } from '@/domain/liquid';
 import { isInventoryWorker, type Actor } from '@/domain/actor';
 import {
   deleteCompletedInventoryCount,
@@ -33,7 +34,7 @@ export function listInventoryHistoryForActor(
 ): InventoryHistoryRowView[] {
   if (!isInventoryWorker(actor)) return [];
   return listCompletedInventoryCounts(db).map(({ count, countedItems, differenceCount }) => {
-    const adjustmentCount = db
+    const standardAdjustmentCount = db
       .select({ id: inventoryMovements.id })
       .from(inventoryMovements)
       .where(
@@ -41,6 +42,17 @@ export function listInventoryHistoryForActor(
           eq(inventoryMovements.inventoryCountId, count.id),
           eq(inventoryMovements.movementType, 'count_correction'),
           eq(inventoryMovements.reason, 'inventory correction'),
+        ),
+      )
+      .all().length;
+    const liquidAdjustmentCount = db
+      .select({ id: liquidInventoryMovements.id })
+      .from(liquidInventoryMovements)
+      .where(
+        and(
+          eq(liquidInventoryMovements.inventoryCountId, count.id),
+          eq(liquidInventoryMovements.movementType, 'count_correction'),
+          eq(liquidInventoryMovements.reason, 'inventory correction'),
         ),
       )
       .all().length;
@@ -54,7 +66,7 @@ export function listInventoryHistoryForActor(
       completedBy: count.completedByRole,
       countedItems,
       differenceCount,
-      adjustmentCount,
+      adjustmentCount: standardAdjustmentCount + liquidAdjustmentCount,
     };
   });
 }
@@ -67,12 +79,18 @@ export interface InventoryHistoryDetailView {
     name: string;
     internalCode: string;
     referenceNumber: string | null;
-    photoUrl: string | null;
     unitOfMeasurement: string;
     expectedQuantity: number;
     countedQuantity: number;
     difference: number;
     finalQuantity: number;
+    trackingMethod: 'standard' | 'liquid';
+    expectedUnopenedVials: number | null;
+    countedUnopenedVials: number | null;
+    finalUnopenedVials: number | null;
+    expectedOpenVialMl: string | null;
+    countedOpenVialMl: string | null;
+    finalOpenVialMl: string | null;
     updatedBy: 'Staff' | 'Admin' | null;
     updatedAtMs: number;
   }>;
@@ -87,7 +105,7 @@ export function getInventoryHistoryForActor(
   const result = getCompletedInventoryCount(db, countId);
   if (!result) return undefined;
   const differenceCount = result.lines.filter((line) => line.difference !== 0).length;
-  const adjustmentCount = db
+  const standardAdjustmentCount = db
     .select({ id: inventoryMovements.id })
     .from(inventoryMovements)
     .where(
@@ -95,6 +113,17 @@ export function getInventoryHistoryForActor(
         eq(inventoryMovements.inventoryCountId, countId),
         eq(inventoryMovements.movementType, 'count_correction'),
         eq(inventoryMovements.reason, 'inventory correction'),
+      ),
+    )
+    .all().length;
+  const liquidAdjustmentCount = db
+    .select({ id: liquidInventoryMovements.id })
+    .from(liquidInventoryMovements)
+    .where(
+      and(
+        eq(liquidInventoryMovements.inventoryCountId, countId),
+        eq(liquidInventoryMovements.movementType, 'count_correction'),
+        eq(liquidInventoryMovements.reason, 'inventory correction'),
       ),
     )
     .all().length;
@@ -109,7 +138,7 @@ export function getInventoryHistoryForActor(
       completedBy: result.count.completedByRole,
       countedItems: result.lines.length,
       differenceCount,
-      adjustmentCount,
+      adjustmentCount: standardAdjustmentCount + liquidAdjustmentCount,
     },
     lines: result.lines.map((line) => ({
       id: line.id,
@@ -117,12 +146,21 @@ export function getInventoryHistoryForActor(
       name: line.itemNameSnapshot ?? `Item ${line.itemId}`,
       internalCode: line.internalCodeSnapshot ?? '',
       referenceNumber: line.referenceNumberSnapshot,
-      photoUrl: line.photoUrlSnapshot,
       unitOfMeasurement: line.unitOfMeasurementSnapshot ?? 'units',
       expectedQuantity: line.expectedQuantity,
       countedQuantity: line.countedQuantity,
       difference: line.difference,
       finalQuantity: line.finalQuantity ?? line.countedQuantity,
+      trackingMethod: line.trackingMethodSnapshot,
+      expectedUnopenedVials: line.expectedUnopenedVials,
+      countedUnopenedVials: line.countedUnopenedVials,
+      finalUnopenedVials: line.finalUnopenedVials,
+      expectedOpenVialMl:
+        line.expectedOpenVialCentiml == null ? null : formatCentiml(line.expectedOpenVialCentiml),
+      countedOpenVialMl:
+        line.countedOpenVialCentiml == null ? null : formatCentiml(line.countedOpenVialCentiml),
+      finalOpenVialMl:
+        line.finalOpenVialCentiml == null ? null : formatCentiml(line.finalOpenVialCentiml),
       updatedBy: line.updatedByRole,
       updatedAtMs: line.updatedAt.getTime(),
     })),

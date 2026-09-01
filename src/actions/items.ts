@@ -16,14 +16,17 @@ import type { AppDatabase, DbLike } from '@/db/client';
 import {
   ADJUSTMENT_REASONS,
   ENTITY_STATUSES,
+  TRACKING_METHODS,
   type AdjustmentReason,
   type EntityStatus,
   type ItemRow,
+  type TrackingMethod,
 } from '@/db/schema';
 import { isAdmin, isInventoryWorker, type Actor } from '@/domain/actor';
 import {
   AVAILABILITY_FILTERS,
   adjustStock,
+  adjustLiquidStock,
   createItem,
   deleteItem,
   getItem,
@@ -37,6 +40,15 @@ import {
   type AvailabilityFilter,
 } from '@/domain/items';
 import { formatCents } from '@/domain/money';
+import {
+  formatCentiml,
+  formatCostPerMeasureMicros,
+  liquidTotalCentiml,
+  parseMlToCentiml,
+  parseNonNegativeMlToCentiml,
+  vialCostToPerMlMicros,
+} from '@/domain/liquid';
+import { listManufacturers } from '@/domain/manufacturers';
 import { staffCanSeeCost } from '@/domain/settings';
 import { errors } from '@/domain/errors';
 import { FieldValidator, type RawFormValue } from './parse';
@@ -66,10 +78,17 @@ export interface ItemView {
   internalCode: string;
   barcodeValue: string;
   name: string;
-  photoUrl: string | null;
+  trackingMethod: TrackingMethod;
+  manufacturerId: number | null;
+  manufacturer: string | null;
   referenceNumber: string | null;
   unitOfMeasurement: string;
   currentQuantity: number;
+  liquidVolumePerVialCentiml: number | null;
+  liquidUnopenedVials: number;
+  liquidOpenVialCentiml: number;
+  liquidTotalCentiml: number | null;
+  liquidTotalFormatted: string | null;
   lowStockThreshold: number | null;
   isLowStock: boolean;
   category: string | null;
@@ -79,18 +98,33 @@ export interface ItemView {
   archivedAtMs: number | null;
   unitCostCents?: number;
   unitCostFormatted?: string;
+  costPerMlMicros?: number;
+  costPerMlFormatted?: string;
 }
 
-export function toItemView(item: ItemRow, options: { showCost: boolean }): ItemView {
+export function toItemView(
+  item: ItemRow,
+  options: { showCost: boolean; manufacturerName?: string | null },
+): ItemView {
+  const liquidTotal = item.trackingMethod === 'liquid' && item.liquidVolumePerVialCentiml
+    ? liquidTotalCentiml(item.liquidUnopenedVials, item.liquidOpenVialCentiml, item.liquidVolumePerVialCentiml)
+    : null;
   const view: ItemView = {
     id: item.id,
     internalCode: item.internalCode,
     barcodeValue: item.barcodeValue,
     name: item.name,
-    photoUrl: item.photoUrl,
+    trackingMethod: item.trackingMethod,
+    manufacturerId: item.manufacturerId,
+    manufacturer: options.manufacturerName ?? null,
     referenceNumber: item.referenceNumber,
     unitOfMeasurement: item.unitOfMeasurement,
     currentQuantity: item.currentQuantity,
+    liquidVolumePerVialCentiml: item.liquidVolumePerVialCentiml,
+    liquidUnopenedVials: item.liquidUnopenedVials,
+    liquidOpenVialCentiml: item.liquidOpenVialCentiml,
+    liquidTotalCentiml: liquidTotal,
+    liquidTotalFormatted: liquidTotal == null ? null : formatCentiml(liquidTotal),
     lowStockThreshold: item.lowStockThreshold,
     isLowStock: isLowStock(item),
     category: item.category,
@@ -102,10 +136,17 @@ export function toItemView(item: ItemRow, options: { showCost: boolean }): ItemV
 
   if (!options.showCost) return view;
 
+  const costPerMlMicros = item.trackingMethod === 'liquid' && item.liquidVolumePerVialCentiml
+    ? vialCostToPerMlMicros(item.currentUnitCostCents, item.liquidVolumePerVialCentiml)
+    : undefined;
   return {
     ...view,
     unitCostCents: item.currentUnitCostCents,
     unitCostFormatted: formatCents(item.currentUnitCostCents),
+    ...(costPerMlMicros === undefined ? {} : {
+      costPerMlMicros,
+      costPerMlFormatted: formatCostPerMeasureMicros(costPerMlMicros),
+    }),
   };
 }
 
@@ -115,8 +156,10 @@ export interface ItemListQuery {
   q?: string;
   category?: string;
   location?: string;
+  manufacturerId?: string | number;
   availability?: string;
   lowStock?: boolean;
+  priceMissing?: boolean;
   includeInactive?: boolean;
   limit?: number;
 }
@@ -126,6 +169,7 @@ export interface ItemListResult {
   showCost: boolean;
   categories: string[];
   storageLocations: string[];
+  manufacturers: { id: number; name: string }[];
   lowStockCount: number;
 }
 
@@ -154,19 +198,27 @@ export function listItemsForActor(
     query: query.q,
     category: query.category || null,
     storageLocation: query.location || null,
+    manufacturerId: Number(query.manufacturerId) > 0 ? Number(query.manufacturerId) : null,
     availability: normalizeAvailability(query.availability),
     lowStockOnly: Boolean(query.lowStock),
+    priceMissing: Boolean(query.priceMissing),
     includeInactive,
     limit: query.limit,
   });
 
   const lowStockCount = listItems(db, { lowStockOnly: true, includeInactive }).length;
 
+  const manufacturerRows = listManufacturers(db);
+  const manufacturerNames = new Map(manufacturerRows.map((row) => [row.id, row.name]));
   return {
-    items: rows.map((row) => toItemView(row, { showCost })),
+    items: rows.map((row) => toItemView(row, {
+      showCost,
+      manufacturerName: row.manufacturerId ? manufacturerNames.get(row.manufacturerId) ?? null : null,
+    })),
     showCost,
     categories: listCategories(db),
     storageLocations: listStorageLocations(db),
+    manufacturers: manufacturerRows.map(({ id, name }) => ({ id, name })),
     lowStockCount,
   };
 }
@@ -178,18 +230,23 @@ export function getItemForActor(
 ): ItemView | undefined {
   const row = getItem(db, itemId);
   if (!row) return undefined;
-  return toItemView(row, { showCost: canSeeCost(db, actor) });
+  const manufacturerName = row.manufacturerId
+    ? listManufacturers(db).find((manufacturer) => manufacturer.id === row.manufacturerId)?.name ?? null
+    : null;
+  return toItemView(row, { showCost: canSeeCost(db, actor), manufacturerName });
 }
 
 export function itemFormOptions(db: AppDatabase): {
   units: string[];
   categories: string[];
   storageLocations: string[];
+  manufacturers: { id: number; name: string }[];
 } {
   return {
     units: listUnitsOfMeasurement(db),
     categories: listCategories(db),
     storageLocations: listStorageLocations(db),
+    manufacturers: listManufacturers(db).map(({ id, name }) => ({ id, name })),
   };
 }
 
@@ -198,22 +255,27 @@ export function itemFormOptions(db: AppDatabase): {
 /** Сырые значения формы Add New Item / Edit Item. */
 export interface ItemFormInput {
   name?: RawFormValue;
+  trackingMethod?: RawFormValue;
+  manufacturer?: RawFormValue;
   costPerUnit?: RawFormValue;
   unitOfMeasurement?: RawFormValue;
   /** §5.4: обязательное поле, значение 0 допустимо. Только при создании. */
   initialQuantity?: RawFormValue;
+  initialUnopenedVials?: RawFormValue;
+  initialOpenVialMl?: RawFormValue;
+  volumePerVialMl?: RawFormValue;
   referenceNumber?: RawFormValue;
   category?: RawFormValue;
   storageLocation?: RawFormValue;
   lowStockThreshold?: RawFormValue;
   notes?: RawFormValue;
   status?: RawFormValue;
-  /** URL уже сохранённого файла; загрузку выполняет `'use server'`-обёртка. */
-  photoUrl?: string | null;
 }
 
 interface ValidatedItemFields {
   name: string;
+  trackingMethod: TrackingMethod;
+  manufacturer: string | null;
   currentUnitCostCents: number;
   unitOfMeasurement: string;
   referenceNumber: string | null;
@@ -221,21 +283,34 @@ interface ValidatedItemFields {
   storageLocation: string | null;
   lowStockThreshold: number | null;
   notes: string | null;
+  liquidVolumePerVialCentiml: number | null;
 }
 
 function validateItemFields(
   input: ItemFormInput,
   v: FieldValidator,
 ): ValidatedItemFields {
+  const trackingMethod = v.oneOf(
+    'trackingMethod', input.trackingMethod ?? 'standard', TRACKING_METHODS, 'Inventory Tracking Method',
+  );
+  let liquidVolumePerVialCentiml: number | null = null;
+  if (trackingMethod === 'liquid') {
+    try {
+      liquidVolumePerVialCentiml = parseMlToCentiml(v.text(input.volumePerVialMl), 'Volume per Vial');
+    } catch (error) {
+      v.add('volumePerVialMl', error instanceof Error ? error.message : 'Volume per Vial is invalid');
+    }
+  }
   return {
     name: v.requiredText('name', input.name, 'Item Name'),
-    currentUnitCostCents: v.requiredCents('costPerUnit', input.costPerUnit, 'Cost per Unit'),
-    unitOfMeasurement: v.requiredText(
-      'unitOfMeasurement',
-      input.unitOfMeasurement,
-      'Unit of Measurement',
-      32,
+    trackingMethod,
+    manufacturer: v.optionalText('manufacturer', input.manufacturer, 120),
+    currentUnitCostCents: v.requiredCents(
+      'costPerUnit', input.costPerUnit, trackingMethod === 'liquid' ? 'Cost per Vial' : 'Cost per Unit',
     ),
+    unitOfMeasurement: trackingMethod === 'liquid'
+      ? 'ml'
+      : v.requiredText('unitOfMeasurement', input.unitOfMeasurement, 'Unit of Measurement', 32),
     referenceNumber: v.optionalText('referenceNumber', input.referenceNumber, 100),
     category: v.optionalText('category', input.category, 100),
     storageLocation: v.optionalText('storageLocation', input.storageLocation, 100),
@@ -246,6 +321,7 @@ function validateItemFields(
       { min: 0 },
     ),
     notes: v.optionalText('notes', input.notes, 2000),
+    liquidVolumePerVialCentiml,
   };
 }
 
@@ -266,16 +342,31 @@ export function createItemAction(
 
   const v = new FieldValidator();
   const fields = validateItemFields(input, v);
-  const initialQuantity = v.requiredInteger('initialQuantity', input.initialQuantity, 'Initial Quantity', {
-    min: 0,
-  });
+  const initialQuantity = fields.trackingMethod === 'standard'
+    ? v.requiredInteger('initialQuantity', input.initialQuantity, 'Initial Quantity', { min: 0 })
+    : 0;
+  const initialUnopenedVials = fields.trackingMethod === 'liquid'
+    ? v.requiredInteger('initialUnopenedVials', input.initialUnopenedVials, 'Number of Vials', { min: 0 })
+    : 0;
+  let initialOpenVialCentiml = 0;
+  if (fields.trackingMethod === 'liquid' && v.text(input.initialOpenVialMl)) {
+    try {
+      initialOpenVialCentiml = parseNonNegativeMlToCentiml(v.text(input.initialOpenVialMl), 'Remaining ml in Open Vial');
+      if (fields.liquidVolumePerVialCentiml && initialOpenVialCentiml > fields.liquidVolumePerVialCentiml) {
+        v.add('initialOpenVialMl', 'Remaining ml cannot exceed Volume per Vial');
+      }
+    } catch (error) {
+      v.add('initialOpenVialMl', error instanceof Error ? error.message : 'Remaining ml is invalid');
+    }
+  }
   if (v.hasErrors) return failFields(v.errors);
 
   return runAction(() => {
     const created = createItem(db, actor, {
       ...fields,
       initialQuantity,
-      photoUrl: input.photoUrl ?? null,
+      initialUnopenedVials,
+      initialOpenVialCentiml,
     });
     return { itemId: created.id, internalCode: created.internalCode, name: created.name };
   });
@@ -287,8 +378,6 @@ export interface UpdatedItem {
   itemId: number;
   internalCode: string;
   name: string;
-  /** URL прежней фотографии, если она была заменена: файл можно удалить. */
-  replacedPhotoUrl: string | null;
 }
 
 /**
@@ -318,11 +407,16 @@ export function updateItemAction(
     const existing = getItem(db, itemId);
     if (!existing) throw errors.itemNotFound(itemId);
 
-    const photoChanged = input.photoUrl !== undefined && input.photoUrl !== existing.photoUrl;
-
     const updated = updateItem(db, actor, itemId, {
-      ...fields,
-      ...(photoChanged ? { photoUrl: input.photoUrl ?? null } : {}),
+      name: fields.name,
+      manufacturer: fields.manufacturer,
+      currentUnitCostCents: fields.currentUnitCostCents,
+      unitOfMeasurement: fields.unitOfMeasurement,
+      referenceNumber: fields.referenceNumber,
+      category: fields.category,
+      storageLocation: fields.storageLocation,
+      lowStockThreshold: fields.lowStockThreshold,
+      notes: fields.notes,
       ...(status ? { status } : {}),
     });
 
@@ -330,7 +424,6 @@ export function updateItemAction(
       itemId: updated.id,
       internalCode: updated.internalCode,
       name: updated.name,
-      replacedPhotoUrl: photoChanged ? existing.photoUrl : null,
     };
   });
 }
@@ -340,7 +433,6 @@ export interface DeletedItem {
   internalCode: string;
   name: string;
   disposition: 'deleted' | 'archived';
-  photoUrl: string | null;
 }
 
 export function deleteItemAction(
@@ -356,7 +448,6 @@ export function deleteItemAction(
       internalCode: result.item.internalCode,
       name: result.item.name,
       disposition: result.disposition,
-      photoUrl: result.photoUrl,
     };
   });
 }
@@ -380,6 +471,8 @@ export interface ReceiveStockFormInput {
 export interface StockChangeResult {
   itemId: number;
   quantityAfter: number;
+  liquidUnopenedVialsAfter?: number;
+  liquidOpenVialCentimlAfter?: number;
   /** false — событие с этим ключом уже применялось; остаток не изменён повторно. */
   applied: boolean;
 }
@@ -410,7 +503,15 @@ export function receiveStockAction(
       clientEventId,
       reason: v.text(input.reason) || null,
     });
-    return { itemId, quantityAfter: result.quantityAfter, applied: result.applied };
+    return {
+      itemId,
+      quantityAfter: result.quantityAfter,
+      ...(result.liquidUnopenedVialsAfter === undefined ? {} : {
+        liquidUnopenedVialsAfter: result.liquidUnopenedVialsAfter,
+        liquidOpenVialCentimlAfter: result.liquidOpenVialCentimlAfter,
+      }),
+      applied: result.applied,
+    };
   });
 }
 
@@ -424,6 +525,8 @@ export interface AdjustStockFormInput {
   /** Q-21: «изменить на» либо «установить в». В журнал всегда пишется дельта. */
   mode?: RawFormValue;
   amount?: RawFormValue;
+  unopenedVials?: RawFormValue;
+  openVialMl?: RawFormValue;
   /** §5.9: причина обязательна и выбирается из списка. */
   reason?: RawFormValue;
   notes?: RawFormValue;
@@ -439,24 +542,48 @@ export function adjustStockAction(
 
   const v = new FieldValidator();
   const itemId = v.requiredInteger('itemId', input.itemId, 'Item', { min: 1 });
+  const item = getItem(db, itemId);
   const mode = v.oneOf('mode', input.mode ?? 'delta', ADJUSTMENT_MODES, 'Adjustment type');
+  const legacyReasons: Record<string, AdjustmentReason> = {
+    damaged: 'Damaged', expired: 'Discarded', missing: 'Used but Not Recorded',
+    other: 'Other', 'inventory correction': 'Inventory Count Correction',
+  };
+  const rawReason = v.text(input.reason);
   const reason: AdjustmentReason = v.oneOf(
     'reason',
-    input.reason,
+    legacyReasons[rawReason.toLocaleLowerCase()] ?? input.reason,
     ADJUSTMENT_REASONS,
     'Reason',
   );
   const notes = v.optionalText('notes', input.notes, 500);
   const clientEventId = v.requiredText('clientEventId', input.clientEventId, 'Request id', 120);
 
-  const amount =
-    mode === 'set'
-      ? v.requiredInteger('amount', input.amount, 'New quantity', { min: 0 })
-      : v.requiredInteger('amount', input.amount, 'Quantity change');
+  const isLiquid = item?.trackingMethod === 'liquid';
+  const amount = isLiquid ? 0 : mode === 'set'
+    ? v.requiredInteger('amount', input.amount, 'New quantity', { min: 0 })
+    : v.requiredInteger('amount', input.amount, 'Quantity change');
 
-  if (mode === 'delta' && amount === 0 && !v.errors.amount) {
+  const unopenedVials = isLiquid
+    ? v.requiredInteger('unopenedVials', input.unopenedVials, 'Unopened vials', { min: 0 })
+    : 0;
+  let openVialCentiml = 0;
+  if (isLiquid && !v.text(input.openVialMl)) {
+    v.add('openVialMl', 'Remaining ml in Open Vial is required');
+  } else if (isLiquid) {
+    try {
+      openVialCentiml = parseNonNegativeMlToCentiml(v.text(input.openVialMl), 'Remaining ml in Open Vial');
+    } catch (error) {
+      v.add('openVialMl', error instanceof Error ? error.message : 'Remaining ml is invalid');
+    }
+  }
+  if (isLiquid && item?.liquidVolumePerVialCentiml && openVialCentiml > item.liquidVolumePerVialCentiml) {
+    v.add('openVialMl', 'Remaining ml cannot exceed Volume per Vial');
+  }
+
+  if (!isLiquid && mode === 'delta' && amount === 0 && !v.errors.amount) {
     v.add('amount', 'Quantity change cannot be zero');
   }
+  if (reason === 'Other' && !notes) v.add('notes', 'Explanation is required when Reason is Other');
   if (v.hasErrors) return failFields(v.errors);
 
   // §5.9 требует причину из списка; свободный комментарий лишь дополняет её.
@@ -464,6 +591,22 @@ export function adjustStockAction(
   const fullReason = notes ? `${reason}: ${notes}` : reason;
 
   return runAction(() => {
+    if (isLiquid) {
+      const result = adjustLiquidStock(db, actor, {
+        itemId,
+        unopenedVials,
+        openVialCentiml,
+        reason: fullReason,
+        clientEventId,
+      });
+      return {
+        itemId,
+        quantityAfter: result.unopenedVialsAfter,
+        liquidUnopenedVialsAfter: result.unopenedVialsAfter,
+        liquidOpenVialCentimlAfter: result.openVialCentimlAfter,
+        applied: result.applied,
+      };
+    }
     const result = adjustStock(db, actor, {
       itemId,
       change: mode === 'set' ? { type: 'set', quantity: amount } : { type: 'delta', delta: amount },

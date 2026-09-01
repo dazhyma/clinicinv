@@ -27,7 +27,6 @@ export interface ItemHistoryView {
     name: string;
     internalCode: string;
     referenceNumber: string | null;
-    photoUrl: string | null;
     currentQuantity: number;
     unitOfMeasurement: string;
   };
@@ -54,7 +53,6 @@ export function getItemHistoryForActor(
       name: item.name,
       internalCode: item.internalCode,
       referenceNumber: item.referenceNumber,
-      photoUrl: item.photoUrl,
       currentQuantity: item.currentQuantity,
       unitOfMeasurement: item.unitOfMeasurement,
     },

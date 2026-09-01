@@ -11,6 +11,7 @@ import {
   inventoryCountLines,
   inventoryCounts,
   inventoryMovements,
+  liquidInventoryMovements,
   items,
   type InventoryCountLineRow,
   type InventoryCountRow,
@@ -19,6 +20,8 @@ import { assertAdmin, assertInventoryWorker, type Actor } from './actor';
 import { AUDIT_ACTIONS, writeAudit } from './audit';
 import { errors } from './errors';
 import { applyMovement, idempotencyKeys, runInTransaction } from './movements';
+import { applyLiquidMovement } from './liquid-movements';
+import { liquidTotalCentiml } from './liquid';
 import { assertNonNegativeQuantity } from './quantity';
 
 export function startInventoryCount(
@@ -109,6 +112,8 @@ export interface UpsertCountLineInput {
   countId: number;
   itemId: number;
   countedQuantity: number;
+  countedUnopenedVials?: number;
+  countedOpenVialCentiml?: number;
 }
 
 /**
@@ -133,8 +138,23 @@ export function upsertCountLine(
     if (item.status !== 'active' || item.archivedAt) throw errors.itemInactive(item.name);
 
     const now = new Date();
-    const expected = item.currentQuantity;
-    const difference = input.countedQuantity - expected;
+    const liquid = item.trackingMethod === 'liquid';
+    const countedUnopened = input.countedUnopenedVials ?? 0;
+    const countedOpen = input.countedOpenVialCentiml ?? 0;
+    if (liquid) {
+      assertNonNegativeQuantity(countedUnopened, 'Counted unopened vials');
+      assertNonNegativeQuantity(countedOpen, 'Counted open vial amount');
+      if (!item.liquidVolumePerVialCentiml || countedOpen > item.liquidVolumePerVialCentiml) {
+        throw errors.validationFailed('Open vial amount cannot exceed the volume per vial');
+      }
+    }
+    const expected = liquid
+      ? liquidTotalCentiml(item.liquidUnopenedVials, item.liquidOpenVialCentiml, item.liquidVolumePerVialCentiml!)
+      : item.currentQuantity;
+    const counted = liquid
+      ? liquidTotalCentiml(countedUnopened, countedOpen, item.liquidVolumePerVialCentiml!)
+      : input.countedQuantity;
+    const difference = counted - expected;
 
     const existing = tx
       .select()
@@ -152,12 +172,16 @@ export function upsertCountLine(
         .update(inventoryCountLines)
         .set({
           expectedQuantity: expected,
-          countedQuantity: input.countedQuantity,
+          countedQuantity: counted,
           difference,
+          trackingMethodSnapshot: item.trackingMethod,
+          expectedUnopenedVials: liquid ? item.liquidUnopenedVials : null,
+          countedUnopenedVials: liquid ? countedUnopened : null,
+          expectedOpenVialCentiml: liquid ? item.liquidOpenVialCentiml : null,
+          countedOpenVialCentiml: liquid ? countedOpen : null,
           itemNameSnapshot: item.name,
           internalCodeSnapshot: item.internalCode,
           referenceNumberSnapshot: item.referenceNumber,
-          photoUrlSnapshot: item.photoUrl,
           unitOfMeasurementSnapshot: item.unitOfMeasurement,
           updatedByAccountId: actor.accountId,
           updatedByRole: actor.role,
@@ -179,13 +203,17 @@ export function upsertCountLine(
         countId: input.countId,
         itemId: input.itemId,
         expectedQuantity: expected,
-        countedQuantity: input.countedQuantity,
+        countedQuantity: counted,
         difference,
+        trackingMethodSnapshot: item.trackingMethod,
+        expectedUnopenedVials: liquid ? item.liquidUnopenedVials : null,
+        countedUnopenedVials: liquid ? countedUnopened : null,
+        expectedOpenVialCentiml: liquid ? item.liquidOpenVialCentiml : null,
+        countedOpenVialCentiml: liquid ? countedOpen : null,
         applied: false,
         itemNameSnapshot: item.name,
         internalCodeSnapshot: item.internalCode,
         referenceNumberSnapshot: item.referenceNumber,
-        photoUrlSnapshot: item.photoUrl,
         unitOfMeasurementSnapshot: item.unitOfMeasurement,
         updatedByAccountId: actor.accountId,
         updatedByRole: actor.role,
@@ -231,6 +259,20 @@ export function applyInventoryCount(
       if (!currentItem) throw errors.itemNotFound(line.itemId);
       // Между подсчётом строки и Finish могли пройти операции или поставки.
       // Коррекция приводит актуальный остаток ТОЧНО к введённому Actual.
+      if (line.trackingMethodSnapshot === 'liquid') {
+        const next = { unopenedVials: line.countedUnopenedVials ?? 0, openVialCentiml: line.countedOpenVialCentiml ?? 0 };
+        const currentTotal = liquidTotalCentiml(currentItem.liquidUnopenedVials, currentItem.liquidOpenVialCentiml, currentItem.liquidVolumePerVialCentiml!);
+        const nextTotal = liquidTotalCentiml(next.unopenedVials, next.openVialCentiml, currentItem.liquidVolumePerVialCentiml!);
+        const movement = applyLiquidMovement(tx, { itemId: line.itemId, movementType: 'count_correction', next,
+          inventoryCountId: countId, idempotencyKey: `count:${countId}:liquid:${line.itemId}`,
+          reason: 'inventory correction', actorAccountId: actor.accountId });
+        tx.update(inventoryCountLines).set({ applied: true, finalQuantity: nextTotal,
+          finalUnopenedVials: movement.unopenedVials, finalOpenVialCentiml: movement.openVialCentiml,
+          updatedAt: now }).where(eq(inventoryCountLines.id, line.id)).run();
+        if (nextTotal !== currentTotal) corrections.push({ itemId: line.itemId,
+          delta: movement.created ? nextTotal - currentTotal : 0, quantityAfter: nextTotal });
+        continue;
+      }
       const currentDifference = line.countedQuantity - currentItem.currentQuantity;
 
       if (currentDifference === 0) {
@@ -360,6 +402,23 @@ export function deleteCompletedInventoryCount(
         actorAccountId: actor.accountId,
       });
     }
+    const liquidOriginals = tx.select().from(liquidInventoryMovements).where(and(
+      eq(liquidInventoryMovements.inventoryCountId, countId),
+      eq(liquidInventoryMovements.movementType, 'count_correction'),
+      eq(liquidInventoryMovements.reason, 'inventory correction'),
+    )).orderBy(liquidInventoryMovements.id).all();
+    for (const movement of liquidOriginals) {
+      const item = tx.select().from(items).where(eq(items.id, movement.itemId)).get();
+      if (!item?.liquidVolumePerVialCentiml) throw errors.itemNotFound(movement.itemId);
+      const currentTotal = liquidTotalCentiml(item.liquidUnopenedVials, item.liquidOpenVialCentiml, item.liquidVolumePerVialCentiml);
+      const desired = currentTotal - movement.totalVolumeCentimlDelta;
+      if (desired < 0) throw errors.validationFailed('Liquid inventory count reversal would make stock negative');
+      applyLiquidMovement(tx, { itemId: item.id, movementType: 'count_correction',
+        next: { unopenedVials: Math.floor(desired / item.liquidVolumePerVialCentiml),
+          openVialCentiml: desired % item.liquidVolumePerVialCentiml },
+        inventoryCountId: countId, idempotencyKey: `count-delete:${countId}:liquid:${movement.id}`,
+        reason: 'inventory count deleted', actorAccountId: actor.accountId });
+    }
 
     const now = new Date();
     const deleted = tx
@@ -383,6 +442,6 @@ export function deleteCompletedInventoryCount(
       summary: `${count.internalCode ?? countId}: ${originals.length} correction(s) reversed`,
     });
 
-    return { count: deleted, reversedMovements: originals.length };
+    return { count: deleted, reversedMovements: originals.length + liquidOriginals.length };
   });
 }

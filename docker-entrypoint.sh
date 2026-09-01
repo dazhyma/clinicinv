@@ -13,9 +13,7 @@
 set -eu
 
 DB_FILE="${DATABASE_FILE:-/app/data/clinic.db}"
-UPLOADS="${UPLOADS_DIR:-/app/data/uploads}"
-
-mkdir -p "$(dirname "$DB_FILE")" "$UPLOADS"
+mkdir -p "$(dirname "$DB_FILE")"
 
 echo "[entrypoint] applying migrations to $DB_FILE"
 node_modules/.bin/tsx scripts/migrate.ts

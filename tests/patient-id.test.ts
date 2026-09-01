@@ -47,6 +47,7 @@ describe('Patient ID lifecycle', () => {
     const ctx = setupTestDb();
     const missing = startOperationAction(ctx.db, ctx.staff, {
       doctorId: ctx.doctor.id,
+      surgeryTypeId: ctx.surgeryType.id,
       patientId: '   ',
     });
     expect(missing).toMatchObject({
@@ -56,6 +57,7 @@ describe('Patient ID lifecycle', () => {
 
     const invalid = startOperationAction(ctx.db, ctx.staff, {
       doctorId: ctx.doctor.id,
+      surgeryTypeId: ctx.surgeryType.id,
       patientId: '001-57',
     });
     expect(invalid).toMatchObject({
@@ -66,6 +68,7 @@ describe('Patient ID lifecycle', () => {
     const created = success<{ operationId: number }>(
       startOperationAction(ctx.db, ctx.staff, {
         doctorId: ctx.doctor.id,
+        surgeryTypeId: ctx.surgeryType.id,
         patientId: '  00157284  ',
       }),
     );

@@ -38,7 +38,7 @@ function expectFailure(result: { ok: boolean }) {
 
 function startOperation(ctx: TestContext, actor = ctx.staff, doctorId = ctx.doctor.id) {
   return expectSuccess<{ operationId: number; caseCode: string }>(
-    startOperationAction(ctx.db, actor, { doctorId, patientId: '000123' }),
+    startOperationAction(ctx.db, actor, { doctorId, patientId: '000123', surgeryTypeId: ctx.surgeryType.id }),
   ).data;
 }
 

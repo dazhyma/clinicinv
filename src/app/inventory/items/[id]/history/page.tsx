@@ -98,6 +98,23 @@ export default async function ItemHistoryPage({
                 </p>
               ) : null}
 
+              {entry.liquidStockAfter != null ? (
+                <p className="mt-3 text-lg">
+                  Stock: <strong>{entry.liquidStockBefore}</strong> →{' '}
+                  <strong>{entry.liquidStockAfter}</strong>
+                  <span
+                    className={`ml-3 font-bold ${
+                      Number(entry.liquidVolumeDeltaMl) < 0
+                        ? 'text-red-700'
+                        : 'text-emerald-700'
+                    }`}
+                  >
+                    {Number(entry.liquidVolumeDeltaMl) > 0 ? '+' : ''}
+                    {entry.liquidVolumeDeltaMl} ml
+                  </span>
+                </p>
+              ) : null}
+
               {entry.oldValue !== null || entry.newValue !== null ? (
                 <p className="mt-3 text-lg">
                   {formatHistoryValue(entry.fieldName, entry.oldValue)} →{' '}
@@ -123,6 +140,5 @@ export default async function ItemHistoryPage({
 function formatHistoryValue(field: string | null, value: string | null): string {
   if (value == null || value === '') return '—';
   if (field === 'currentUnitCostCents') return formatCents(Number(value));
-  if (field === 'photoUrl') return value ? 'Photo present' : 'No photo';
   return value;
 }

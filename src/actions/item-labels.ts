@@ -16,7 +16,6 @@ import { listItems } from '@/domain/items';
 export interface LabelSelectionItemView {
   id: number;
   name: string;
-  photoUrl: string | null;
   internalCode: string;
   barcodeValue: string;
   referenceNumber: string | null;
@@ -37,7 +36,6 @@ export function listActiveItemsForLabels(
     .map((item) => ({
       id: item.id,
       name: item.name,
-      photoUrl: item.photoUrl,
       internalCode: item.internalCode,
       barcodeValue: item.barcodeValue,
       referenceNumber: item.referenceNumber,

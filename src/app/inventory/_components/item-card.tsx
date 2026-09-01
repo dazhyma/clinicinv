@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import type { ItemView } from '@/actions/items';
-import { ItemPhoto } from '../../_components/item-photo';
 import { ButtonLink, StatusBadge } from '../../_components/ui';
 
 /**
@@ -36,7 +35,6 @@ export function ItemCard({
         lowStock ? 'border-amber-300 bg-amber-50/50' : ''
       }`}
     >
-      <ItemPhoto photoUrl={item.photoUrl} name={item.name} size={64} />
 
       <div className="min-w-40 flex-1">
         <div className="flex flex-wrap items-center gap-2">
@@ -57,13 +55,14 @@ export function ItemCard({
         </div>
 
         <p className="mt-1 text-lg text-slate-700">
-          In stock: <strong>{item.currentQuantity}</strong> {item.unitOfMeasurement}
-          {item.unitCostFormatted ? <> · Cost: {item.unitCostFormatted}</> : null}
+          In stock: <strong>{item.trackingMethod === 'liquid' ? item.liquidTotalFormatted : item.currentQuantity}</strong> {item.trackingMethod === 'liquid' ? 'ml' : item.unitOfMeasurement}
+          {item.unitCostFormatted ? <> · Cost: {item.unitCostFormatted} / {item.trackingMethod === 'liquid' ? 'vial' : item.unitOfMeasurement}</> : null}
         </p>
 
         <p className="mt-1 font-mono text-sm text-slate-500">
           Item Code: {item.internalCode}
           {item.referenceNumber ? ` · Ref ${item.referenceNumber}` : ''}
+          {item.manufacturer ? ` · ${item.manufacturer}` : ''}
         </p>
       </div>
 

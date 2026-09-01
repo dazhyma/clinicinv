@@ -472,7 +472,7 @@ describe('Валидация формы Add New Item (§5.4)', () => {
         clientEventId: nextClientEventId('adj'),
       }),
     );
-    expect(freeText.fieldErrors?.reason).toMatch(/damaged, expired, missing/);
+    expect(freeText.fieldErrors?.reason).toMatch(/Inventory Count Correction.*Damaged.*Spilled.*Discarded/i);
 
     const zeroDelta = expectFailure(
       adjustStockAction(ctx.db, ctx.admin, {

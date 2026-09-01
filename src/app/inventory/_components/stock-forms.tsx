@@ -63,10 +63,10 @@ export function ReceiveStockForm({
 
       <Field
         name="quantity"
-        label="Quantity received"
+        label={item.trackingMethod === 'liquid' ? 'Unopened vials received' : 'Quantity received'}
         required
         error={fieldErrors.quantity}
-        hint={`Current stock: ${item.currentQuantity} ${item.unitOfMeasurement}`}
+        hint={item.trackingMethod === 'liquid' ? `Current stock: ${item.liquidUnopenedVials} unopened vials` : `Current stock: ${item.currentQuantity} ${item.unitOfMeasurement}`}
       >
         {(props) => <input type="number" inputMode="numeric" min={1} step={1} {...props} />}
       </Field>
@@ -74,7 +74,7 @@ export function ReceiveStockForm({
       {showCost ? (
         <Field
           name="newCostPerUnit"
-          label="New cost per unit"
+          label={item.trackingMethod === 'liquid' ? 'New cost per vial' : 'New cost per unit'}
           error={fieldErrors.newCostPerUnit}
           hint="Leave empty to keep the current cost. A new cost applies to future surgeries only; finished surgeries never change."
         >
@@ -115,8 +115,14 @@ export function AdjustStockForm({
   const fieldErrors = state.fieldErrors ?? {};
   const clientEventId = useIdempotencyKey(state);
   const [mode, setMode] = useState<'delta' | 'set'>('delta');
+  const [amountInput, setAmountInput] = useState('');
+  const [unopenedInput, setUnopenedInput] = useState(String(item.liquidUnopenedVials ?? 0));
+  const [openMlInput, setOpenMlInput] = useState((item.liquidOpenVialCentiml / 100).toFixed(2));
   const [dirty, setDirty] = useState(false);
   useUnsavedChanges(dirty && !state.ok);
+  const standardNewStock = amountInput.trim() === '' || !Number.isFinite(Number(amountInput))
+    ? null
+    : mode === 'set' ? Number(amountInput) : item.currentQuantity + Number(amountInput);
 
   return (
     <form action={formAction} onChangeCapture={() => setDirty(true)} className="flex flex-col gap-5">
@@ -126,7 +132,7 @@ export function AdjustStockForm({
       <ErrorBanner message={state.error} />
       {state.ok ? <SuccessBanner message={state.message} /> : null}
 
-      {/* Q-21: §5.9 допускает и дельту, и новое фактическое количество.
+      {item.trackingMethod === 'standard' ? <>{/* Q-21: §5.9 допускает и дельту, и новое фактическое количество.
           В журнал движений в обоих случаях пишется дельта. */}
       <fieldset className="flex flex-col gap-2">
         <legend className="text-base font-medium">Adjustment type</legend>
@@ -173,11 +179,30 @@ export function AdjustStockForm({
             type="number"
             inputMode="numeric"
             step={1}
+            value={amountInput}
+            onChange={(event) => setAmountInput(event.currentTarget.value)}
             {...(mode === 'set' ? { min: 0 } : {})}
             {...props}
           />
         )}
       </Field>
+      <p className="rounded-xl bg-slate-50 px-4 py-3 text-lg">
+        Current Stock: <strong>{item.currentQuantity}</strong> · New Stock:{' '}
+        <strong>{standardNewStock == null ? '—' : standardNewStock}</strong>
+      </p>
+      </> : <>
+        <input type="hidden" name="mode" value="set" />
+        <Field name="unopenedVials" label="Unopened vials" required error={fieldErrors.unopenedVials} hint={`Current: ${item.liquidUnopenedVials ?? 0}`}>
+          {(props) => <input type="number" inputMode="numeric" min={0} step={1} value={unopenedInput} onChange={(event) => setUnopenedInput(event.currentTarget.value)} {...props} />}
+        </Field>
+        <Field name="openVialMl" label="Remaining ml in open vial" required error={fieldErrors.openVialMl} hint={`Maximum: ${((item.liquidVolumePerVialCentiml ?? 0) / 100).toFixed(2)} ml`}>
+          {(props) => <input type="number" inputMode="decimal" min={0} step="0.01" value={openMlInput} onChange={(event) => setOpenMlInput(event.currentTarget.value)} {...props} />}
+        </Field>
+        <p className="rounded-xl bg-slate-50 px-4 py-3 text-lg">
+          Current Stock: <strong>{item.liquidUnopenedVials} unopened + {(item.liquidOpenVialCentiml / 100).toFixed(2)} ml open</strong>
+          {' · '}New Stock: <strong>{unopenedInput || '—'} unopened + {openMlInput || '—'} ml open</strong>
+        </p>
+      </>}
 
       {/* §5.9: причина обязательна и выбирается из фиксированного списка. */}
       <Field name="reason" label="Reason" required error={fieldErrors.reason}>

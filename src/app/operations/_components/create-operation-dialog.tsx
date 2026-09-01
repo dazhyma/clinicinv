@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useActionState, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import type { DoctorView } from '@/actions/doctors';
+import type { SurgeryTypeView } from '@/actions/surgery-types';
 import { Alert, Button, buttonClassName, FieldLabel, Input, Select } from '../../_components/ui';
 import { startOperationFormAction, type StartSurgeryFormState } from '../actions';
 
@@ -24,11 +25,13 @@ export function CreateOperationDialog({
   doctors,
   hasActiveOperations,
   rooms,
+  surgeryTypes,
 }: {
   doctors: DoctorView[];
   hasActiveOperations: boolean;
   /** Сколько операционных кабинетов и сколько из них занято прямо сейчас. */
   rooms: { activeCount: number; rooms: number; allBusy: boolean };
+  surgeryTypes: SurgeryTypeView[];
 }) {
   const [open, setOpen] = useState(false);
   const available = doctors.filter((doctor) => !doctor.activeOperation);
@@ -38,7 +41,7 @@ export function CreateOperationDialog({
   const label = hasActiveOperations ? 'Start Another Surgery' : 'Start New Surgery';
   // Врач с незакрытой операцией и переполненные кабинеты объясняются ДО выбора:
   // сервер откажет в любом случае, но узнавать об этом отказом — плохо.
-  const blocked = rooms.allBusy || available.length === 0;
+  const blocked = rooms.allBusy || available.length === 0 || surgeryTypes.length === 0;
 
   return (
     <>
@@ -75,7 +78,9 @@ export function CreateOperationDialog({
             {doctors.length === 0 || blocked ? (
               <>
                 <Alert tone="warning" className="mt-5">
-                  {doctors.length === 0
+                  {surgeryTypes.length === 0
+                    ? 'No Surgery Types have been added yet. An administrator adds them in Settings → Surgery Types.'
+                    : doctors.length === 0
                     ? 'No doctors have been added yet. An administrator adds them in Settings → Doctors.'
                     : rooms.allBusy
                       ? `All ${rooms.rooms} operating rooms are in use. Finish one of the active surgeries before starting another.`
@@ -175,6 +180,16 @@ export function CreateOperationDialog({
                         {state.fieldErrors.patientId}
                       </p>
                     ) : null}
+                  </div>
+                ) : null}
+                {doctorId ? (
+                  <div>
+                    <FieldLabel htmlFor="surgeryTypeId">Surgery Type</FieldLabel>
+                    <Select id="surgeryTypeId" name="surgeryTypeId" required className="mt-1 w-full text-lg">
+                      <option value="">Select a Surgery Type…</option>
+                      {surgeryTypes.map(type => <option key={type.id} value={type.id}>{type.name}</option>)}
+                    </Select>
+                    {state.fieldErrors?.surgeryTypeId ? <p className="mt-1 text-sm font-medium text-red-700">{state.fieldErrors.surgeryTypeId}</p> : null}
                   </div>
                 ) : null}
                 <p className="mt-2 text-base text-slate-600">

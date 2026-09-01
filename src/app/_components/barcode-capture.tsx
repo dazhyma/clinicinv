@@ -19,7 +19,6 @@ import {
 } from '../_actions/scanning';
 import { newClientEventId } from './client-event-id';
 import { CameraIcon, CloseIcon, RefreshIcon, SearchIcon } from './icons';
-import { ItemPhoto } from './item-photo';
 
 export type BarcodeScanSource = 'camera' | 'hid' | 'manual';
 
@@ -51,6 +50,7 @@ interface BarcodeCaptureProps {
     source: BarcodeScanSource,
     /** Stable across retries while this exact confirmation card is open. */
     confirmationId: string,
+    amountUsedMl?: string,
   ): Promise<BarcodeConfirmOutcome> | BarcodeConfirmOutcome;
 }
 
@@ -94,6 +94,7 @@ export const BarcodeCapture = forwardRef<BarcodeCaptureHandle, BarcodeCapturePro
     const [canSwitchCamera, setCanSwitchCamera] = useState(false);
     const [torchAvailable, setTorchAvailable] = useState(false);
     const [torchOn, setTorchOn] = useState(false);
+    const [amountUsedMl, setAmountUsedMl] = useState('');
 
     const inputRef = useRef<HTMLInputElement>(null);
     const cameraButtonRef = useRef<HTMLButtonElement>(null);
@@ -122,6 +123,7 @@ export const BarcodeCapture = forwardRef<BarcodeCaptureHandle, BarcodeCapturePro
       setError(null);
       setSuccess(null);
       setShowAllContents(false);
+      setAmountUsedMl('');
       confirmationIdRef.current = null;
       focusInput();
     }, [focusInput]);
@@ -460,7 +462,12 @@ export const BarcodeCapture = forwardRef<BarcodeCaptureHandle, BarcodeCapturePro
       try {
         const confirmationId = confirmationIdRef.current ?? newClientEventId();
         confirmationIdRef.current = confirmationId;
-        const outcome = await onConfirm(target, source, confirmationId);
+        if (target.trackingMethod === 'liquid' && !/^\d+(?:\.\d{1,2})?$/.test(amountUsedMl.trim())) {
+          setError('Enter Amount Used (ml), with at most 2 decimal places');
+          setPhase('ready');
+          return;
+        }
+        const outcome = await onConfirm(target, source, confirmationId, amountUsedMl.trim() || undefined);
         if (!outcome.ok) {
           setError(outcome.error ?? 'The item was not saved');
           setPhase('ready');
@@ -519,6 +526,8 @@ export const BarcodeCapture = forwardRef<BarcodeCaptureHandle, BarcodeCapturePro
           onScanAgain={scanAgain}
           onCancel={cancel}
           retryLabel={source === 'manual' ? 'Back to Search' : 'Scan Again'}
+          amountUsedMl={amountUsedMl}
+          onAmountUsedMlChange={setAmountUsedMl}
         />
       );
 
@@ -674,7 +683,6 @@ export const BarcodeCapture = forwardRef<BarcodeCaptureHandle, BarcodeCapturePro
                         onClick={() => void resolveCode(result.internalCode, 'manual')}
                         className="flex min-h-16 w-full items-center gap-3 rounded-xl border border-slate-300 p-3 text-left transition hover:border-slate-500 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--color-focus-ring)]"
                       >
-                        <ItemPhoto photoUrl={result.photoUrl} name={result.name} size={48} />
                         <span className="min-w-0 flex-1">
                           <span className="block text-lg font-semibold">{result.name}</span>
                           <span className="block font-mono text-sm text-slate-600">
@@ -713,6 +721,8 @@ function ConfirmationPanel({
   onScanAgain,
   onCancel,
   retryLabel,
+  amountUsedMl,
+  onAmountUsedMlChange,
 }: {
   phase: Phase;
   target: BarcodeConfirmationView | null;
@@ -725,6 +735,8 @@ function ConfirmationPanel({
   onScanAgain(): void;
   onCancel(): void;
   retryLabel: string;
+  amountUsedMl: string;
+  onAmountUsedMlChange(value: string): void;
 }) {
   if (phase === 'resolving') {
     return (
@@ -780,7 +792,6 @@ function ConfirmationPanel({
   return (
     <section className="app-card p-5 text-slate-900 shadow-[var(--shadow-raised)]">
       <div className="flex items-start gap-4">
-        <ItemPhoto photoUrl={target.photoUrl} name={target.name} size={76} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-2xl font-bold break-words">{target.name}</h2>
@@ -796,8 +807,8 @@ function ConfirmationPanel({
           ) : null}
           {target.kind === 'item' ? (
             <p className="mt-2 text-xl">
-              In stock: <strong>{target.currentQuantity}</strong>{' '}
-              <span className="text-base text-slate-600">{target.unitOfMeasurement}</span>
+              In stock: <strong>{target.trackingMethod === 'liquid' ? target.availableMl : target.currentQuantity}</strong>{' '}
+              <span className="text-base text-slate-600">{target.trackingMethod === 'liquid' ? 'ml' : target.unitOfMeasurement}</span>
             </p>
           ) : null}
         </div>
@@ -829,6 +840,22 @@ function ConfirmationPanel({
             </button>
           ) : null}
         </div>
+      ) : null}
+
+      {target.kind === 'item' && target.trackingMethod === 'liquid' ? (
+        <label className="mt-4 block text-base font-semibold">
+          Amount Used (ml)
+          <input
+            type="number"
+            inputMode="decimal"
+            min="0.01"
+            step="0.01"
+            required
+            value={amountUsedMl}
+            onChange={(event) => onAmountUsedMlChange(event.currentTarget.value)}
+            className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3 text-xl"
+          />
+        </label>
       ) : null}
 
       {error ? (

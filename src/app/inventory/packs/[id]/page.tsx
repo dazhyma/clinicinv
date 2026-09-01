@@ -4,7 +4,6 @@ import { getPackForActor } from '@/actions/packs';
 import { requirePage } from '@/auth/guards';
 import { getDb } from '@/db/client';
 import { AppHeader } from '../../../_components/app-header';
-import { ItemPhoto } from '../../../_components/item-photo';
 import { DeleteDialog } from '../../_components/delete-dialog';
 import { deletePackFormAction } from '../actions';
 
@@ -30,7 +29,6 @@ export default async function PackDetailPage({ params }: { params: Promise<{ id:
 
       <section className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
         <div className="flex flex-wrap gap-5">
-          <ItemPhoto photoUrl={pack.photoUrl} name={pack.name} size={128} />
           <div className="min-w-52 flex-1">
             <p className="font-mono text-lg text-slate-600">{pack.internalCode}</p>
             <p className="mt-2 text-lg">

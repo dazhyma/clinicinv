@@ -31,11 +31,12 @@ import {
 } from '@/db/schema';
 import { isAdmin, type Actor } from '@/domain/actor';
 import { errors } from '@/domain/errors';
-import { listItems, searchItems } from '@/domain/items';
+import { getItem, listItems, searchItems } from '@/domain/items';
 import { formatCents } from '@/domain/money';
 import { decryptPatientId, patientIdLookup } from '@/security/patient-id';
 import {
   addItemToOperation,
+  addItemToFinishedOperation,
   addPackToOperation,
   calculateOperationTotalCents,
   deleteVoidedOperation,
@@ -48,6 +49,10 @@ import {
   resolveScannedBarcode,
   setLineQuantity,
   setOperationDoctor,
+  startOrTimer,
+  stopOrTimer,
+  editOrTime,
+  editFinishedLineCost,
   startOperation,
   summarizeOperations,
   undoLastScan,
@@ -56,7 +61,9 @@ import {
   type DeleteVoidedOperationResult,
 } from '@/domain/operations';
 import { getPackComposition, listPacks } from '@/domain/packs';
+import { formatCentiml, formatCostPerMeasureMicros, parseDollarsToMicros, parseMlToCentiml, standardCostToMicros, vialCostToPerMlMicros } from '@/domain/liquid';
 import { getBooleanSetting, SETTING_KEYS } from '@/domain/settings';
+import { clinicLocalDateTimeToUtc } from '@/lib/clinic-time';
 import { canSeeCost } from './items';
 import { FieldValidator, type RawFormValue } from './parse';
 import { failFields, forbidden, ok, runAction, type ActionResult } from './result';
@@ -94,6 +101,11 @@ export interface OperationLineView {
   referenceNumber: string | null;
   unitOfMeasurement: string;
   quantity: number;
+  trackingMethod: 'standard' | 'liquid';
+  amountUsedCentiml: number | null;
+  amountUsedFormatted: string | null;
+  manufacturer: string | null;
+  addedAfterFinish: boolean;
   sourceType: SourceType;
   sourcePackId: number | null;
   sourcePackName: string | null;
@@ -121,6 +133,10 @@ export interface OperationStateView {
   finishedAtMs: number | null;
   voidedAtMs: number | null;
   voidReason: string | null;
+  surgeryTypeId: number | null;
+  surgeryTypeName: string | null;
+  orStartedAtMs: number | null;
+  orEndedAtMs: number | null;
   lines: OperationLineView[];
   /** C-10: уникальные позиции и единицы — разные величины, подписаны отдельно. */
   itemCount: number;
@@ -134,6 +150,9 @@ export interface OperationStateView {
   canDelete: boolean;
   /** Изменять состав можно только у активной операции (§9.2). */
   canEdit: boolean;
+  canAddMissingItem: boolean;
+  canEditAppliedCost: boolean;
+  canEditOrTime: boolean;
 }
 
 function packNamesFor(tx: DbLike, lines: OperationItemRow[]): Map<number, string> {
@@ -159,6 +178,11 @@ function toLineView(
     referenceNumber: line.referenceNumberSnapshot,
     unitOfMeasurement: line.unitOfMeasurementSnapshot,
     quantity: line.quantity,
+    trackingMethod: line.trackingMethodSnapshot,
+    amountUsedCentiml: line.amountUsedCentiml,
+    amountUsedFormatted: line.amountUsedCentiml == null ? null : formatCentiml(line.amountUsedCentiml),
+    manufacturer: line.manufacturerNameSnapshot,
+    addedAfterFinish: line.addedAfterFinish,
     sourceType: line.sourceType,
     sourcePackId: line.sourcePackId,
     sourcePackName: line.sourcePackId != null ? (packNames.get(line.sourcePackId) ?? null) : null,
@@ -169,7 +193,9 @@ function toLineView(
   return {
     ...view,
     unitCostCents: line.unitCostSnapshotCents,
-    unitCostFormatted: formatCents(line.unitCostSnapshotCents),
+    unitCostFormatted: line.trackingMethodSnapshot === 'liquid'
+      ? formatCostPerMeasureMicros(line.appliedCostPerMeasureMicros ?? 0)
+      : formatCents(line.unitCostSnapshotCents),
     lineTotalCents: line.lineTotalCents,
     lineTotalFormatted: formatCents(line.lineTotalCents),
   };
@@ -197,6 +223,10 @@ function toStateView(tx: DbLike, actor: Actor, operation: OperationRow): Operati
     finishedAtMs: operation.finishedAt?.getTime() ?? null,
     voidedAtMs: operation.voidedAt?.getTime() ?? null,
     voidReason: operation.voidReason,
+    surgeryTypeId: operation.surgeryTypeId,
+    surgeryTypeName: operation.surgeryTypeNameSnapshot,
+    orStartedAtMs: operation.orStartedAt?.getTime() ?? null,
+    orEndedAtMs: operation.orEndedAt?.getTime() ?? null,
     lines,
     itemCount: new Set(rows.map((line) => line.itemId)).size,
     unitCount: rows.reduce((sum, line) => sum + line.quantity, 0),
@@ -205,6 +235,9 @@ function toStateView(tx: DbLike, actor: Actor, operation: OperationRow): Operati
     canDelete: isAdmin(actor) && operation.status === 'Voided',
     canEdit: operation.status === 'Active',
     canChangeDoctor: isAdmin(actor) && operation.status === 'Active',
+    canAddMissingItem: isAdmin(actor) && operation.status === 'Finished',
+    canEditAppliedCost: isAdmin(actor) && operation.status === 'Finished',
+    canEditOrTime: isAdmin(actor) && operation.orStartedAt != null && operation.orEndedAt != null,
   };
 
   if (!showCost) return view;
@@ -455,25 +488,31 @@ export interface StartedOperation {
  * перезаписывает существующую активную операцию (§8.5, §18.24): домен просто
  * вставляет ещё одну строку, ничего не ища и не обновляя.
  *
- * Категория процедуры в этом спринте не вводится: закрытый справочник
- * обобщённых значений заказчиком не утверждён (Q-2), а свободное текстовое поле
- * прямо запрещено §2.4 — персонал впишет туда пациента.
+ * Surgery Type выбирается только из закрытого Admin-справочника. Свободного
+ * текста здесь нет: это сохраняет согласованное ограничение на пациентские
+ * данные и даёт стабильный разрез для отчётов.
  */
 export function startOperationAction(
   db: AppDatabase,
   actor: Actor,
-  input: { doctorId?: RawFormValue; patientId?: RawFormValue } = {},
+  input: { doctorId?: RawFormValue; patientId?: RawFormValue; surgeryTypeId?: RawFormValue } = {},
 ): ActionResult<StartedOperation> {
   const v = new FieldValidator();
   const doctorId = v.requiredInteger('doctorId', input.doctorId, 'Doctor', { min: 1 });
   const patientId = v.text(input.patientId);
+  const surgeryTypeId = v.requiredInteger(
+    'surgeryTypeId',
+    input.surgeryTypeId,
+    'Surgery Type',
+    { min: 1 },
+  );
   if (!patientId) v.add('patientId', 'Patient ID is required.');
   else if (patientId.length > 64) v.add('patientId', 'Patient ID must be 64 digits or fewer.');
   else if (!/^\d+$/.test(patientId)) v.add('patientId', 'Patient ID must contain digits only.');
   if (v.hasErrors) return failFields(v.errors, 'Enter the required surgery details.');
 
   return runAction(() => {
-    const operation = startOperation(db, actor, { doctorId, patientId });
+    const operation = startOperation(db, actor, { doctorId, patientId, surgeryTypeId });
     return {
       operationId: operation.id,
       caseCode: displayCaseCode(operation),
@@ -544,6 +583,7 @@ export interface ScanInput {
   /** Строка, которую напечатал сканер. Нормализуется в домене. */
   barcode?: RawFormValue;
   clientEventId?: RawFormValue;
+  amountUsedMl?: RawFormValue;
 }
 
 /**
@@ -583,10 +623,15 @@ export function scanIntoOperationAction(
       return mutationResult(db, actor, operationId, outcome, message);
     }
 
+    let amountUsedCentiml: number | undefined;
+    if (target.item.trackingMethod === 'liquid') {
+      amountUsedCentiml = parseMlToCentiml(v.text(input.amountUsedMl), 'Amount Used');
+    }
     const outcome = addItemToOperation(db, actor, {
       operationId,
       itemId: target.item.id,
       quantity: 1,
+      amountUsedCentiml,
       clientEventId,
     });
     const message = outcome.applied
@@ -606,6 +651,9 @@ export interface ItemSearchResultView {
   unitOfMeasurement: string;
   currentQuantity: number;
   unitCostFormatted?: string;
+  trackingMethod: 'standard' | 'liquid';
+  availableMlFormatted: string | null;
+  appliedCostFormatted?: string;
 }
 
 /** Поиск по названию, системному Item Code и reference/catalog number. */
@@ -631,9 +679,22 @@ export function searchItemsForOperationAction(
         referenceNumber: item.referenceNumber,
         unitOfMeasurement: item.unitOfMeasurement,
         currentQuantity: item.currentQuantity,
+        trackingMethod: item.trackingMethod,
+        availableMlFormatted: item.trackingMethod === 'liquid' && item.liquidVolumePerVialCentiml
+          ? formatCentiml(item.liquidUnopenedVials * item.liquidVolumePerVialCentiml + item.liquidOpenVialCentiml)
+          : null,
       };
       if (!showCost) return view;
-      return { ...view, unitCostFormatted: formatCents(item.currentUnitCostCents) };
+      return {
+        ...view,
+        unitCostFormatted: formatCents(item.currentUnitCostCents),
+        appliedCostFormatted:
+          item.trackingMethod === 'liquid' && item.liquidVolumePerVialCentiml
+            ? formatCostPerMeasureMicros(
+                vialCostToPerMlMicros(item.currentUnitCostCents, item.liquidVolumePerVialCentiml),
+              )
+            : formatCents(item.currentUnitCostCents),
+      };
     });
   });
 }
@@ -642,6 +703,7 @@ export interface AddItemInput {
   operationId: RawFormValue;
   itemId: RawFormValue;
   quantity?: RawFormValue;
+  amountUsedMl?: RawFormValue;
   clientEventId?: RawFormValue;
 }
 
@@ -657,10 +719,18 @@ export function addItemToOperationAction(
   const v = new FieldValidator();
   const operationId = v.requiredInteger('operationId', input.operationId, 'Surgery', { min: 1 });
   const itemId = v.requiredInteger('itemId', input.itemId, 'Item', { min: 1 });
-  const quantity =
-    input.quantity == null || v.text(input.quantity) === ''
-      ? 1
-      : v.requiredInteger('quantity', input.quantity, 'Quantity', { min: 1 });
+  const item = !v.hasErrors ? getItem(db, itemId) : undefined;
+  let quantity = 1;
+  let amountUsedCentiml: number | undefined;
+  if (item?.trackingMethod === 'liquid') {
+    try {
+      amountUsedCentiml = parseMlToCentiml(v.text(input.amountUsedMl), 'Amount Used');
+    } catch (error) {
+      v.add('amountUsedMl', error instanceof Error ? error.message : 'Amount Used is invalid');
+    }
+  } else if (input.quantity != null && v.text(input.quantity) !== '') {
+    quantity = v.requiredInteger('quantity', input.quantity, 'Quantity', { min: 1 });
+  }
   const clientEventId = requireClientEventId(v, input.clientEventId);
   if (v.hasErrors) return failFields(v.errors);
 
@@ -669,6 +739,7 @@ export function addItemToOperationAction(
       operationId,
       itemId,
       quantity,
+      amountUsedCentiml,
       clientEventId,
     });
     const name = outcome.lines[0]?.itemNameSnapshot ?? 'Item';
@@ -774,11 +845,12 @@ export function finishOperationAction(
   db: AppDatabase,
   actor: Actor,
   operationId: number,
+  stopRunningTimer = false,
 ): ActionResult<FinishedOperation> {
   return runAction(() => {
     const showCost = canSeeCost(db, actor);
     const lines = listOperationLines(db, operationId);
-    const finished = finishOperation(db, actor, operationId);
+    const finished = finishOperation(db, actor, operationId, stopRunningTimer);
 
     const result: FinishedOperation = {
       operationId: finished.id,
@@ -791,6 +863,74 @@ export function finishOperationAction(
       ...result,
       totalCostFormatted: formatCents(finished.totalCostSnapshotCents ?? 0),
     };
+  });
+}
+
+export function startOrTimerAction(db: AppDatabase, actor: Actor, operationId: number): ActionResult<OperationStateView> {
+  return runAction(() => toStateView(db, actor, startOrTimer(db, actor, operationId)));
+}
+
+export function stopOrTimerAction(db: AppDatabase, actor: Actor, operationId: number): ActionResult<OperationStateView> {
+  return runAction(() => toStateView(db, actor, stopOrTimer(db, actor, operationId)));
+}
+
+export function editOrTimeAction(db: AppDatabase, actor: Actor, input: {
+  operationId: RawFormValue; startedAt: RawFormValue; endedAt: RawFormValue; reason?: RawFormValue;
+}): ActionResult<OperationStateView> {
+  if (!isAdmin(actor)) return forbidden('edit OR time');
+  const v = new FieldValidator();
+  const operationId = v.requiredInteger('operationId', input.operationId, 'Surgery', { min: 1 });
+  const startedAtRaw = v.requiredText('startedAt', input.startedAt, 'OR Start Time', 80);
+  const endedAtRaw = v.requiredText('endedAt', input.endedAt, 'OR End Time', 80);
+  let startedAt = new Date(Number.NaN);
+  let endedAt = new Date(Number.NaN);
+  try { startedAt = clinicLocalDateTimeToUtc(startedAtRaw); }
+  catch (error) { v.add('startedAt', error instanceof Error ? error.message : 'Enter a valid OR Start Time'); }
+  try { endedAt = clinicLocalDateTimeToUtc(endedAtRaw); }
+  catch (error) { v.add('endedAt', error instanceof Error ? error.message : 'Enter a valid OR End Time'); }
+  const reason = v.optionalText('reason', input.reason, 500);
+  if (v.hasErrors) return failFields(v.errors);
+  return runAction(() => toStateView(db, actor, editOrTime(db, actor, operationId, startedAt, endedAt, reason)));
+}
+
+export function editFinishedLineCostAction(db: AppDatabase, actor: Actor, input: {
+  operationId: RawFormValue; lineId: RawFormValue; cost: RawFormValue; reason?: RawFormValue;
+}): ActionResult<OperationStateView> {
+  if (!isAdmin(actor)) return forbidden('edit applied cost');
+  const v = new FieldValidator();
+  const operationId = v.requiredInteger('operationId', input.operationId, 'Surgery', { min: 1 });
+  const lineId = v.requiredInteger('lineId', input.lineId, 'Item line', { min: 1 });
+  const costRaw = v.requiredText('cost', input.cost, 'Cost', 30);
+  const reason = v.optionalText('reason', input.reason, 500);
+  let micros = 0;
+  try { micros = parseDollarsToMicros(costRaw, 'Applied cost'); }
+  catch (error) { v.add('cost', error instanceof Error ? error.message : 'Cost is invalid'); }
+  if (v.hasErrors) return failFields(v.errors);
+  return runAction(() => {
+    editFinishedLineCost(db, actor, operationId, lineId, micros, reason);
+    return toStateView(db, actor, getOperation(db, operationId)!);
+  });
+}
+
+export function addMissingItemAction(db: AppDatabase, actor: Actor, input: AddItemInput): ActionResult<OperationMutationResult> {
+  if (!isAdmin(actor)) return forbidden('add an item to a finished surgery');
+  const v = new FieldValidator();
+  const operationId = v.requiredInteger('operationId', input.operationId, 'Surgery', { min: 1 });
+  const itemId = v.requiredInteger('itemId', input.itemId, 'Item', { min: 1 });
+  const clientEventId = requireClientEventId(v, input.clientEventId);
+  const item = !v.hasErrors ? getItem(db, itemId) : undefined;
+  let quantity = 1;
+  let amountUsedCentiml: number | undefined;
+  if (item?.trackingMethod === 'liquid') {
+    try { amountUsedCentiml = parseMlToCentiml(v.text(input.amountUsedMl), 'Amount Used'); }
+    catch (error) { v.add('amountUsedMl', error instanceof Error ? error.message : 'Amount Used is invalid'); }
+  } else if (input.quantity != null && v.text(input.quantity) !== '') {
+    quantity = v.requiredInteger('quantity', input.quantity, 'Quantity', { min: 1 });
+  }
+  if (v.hasErrors) return failFields(v.errors);
+  return runAction(() => {
+    const outcome = addItemToFinishedOperation(db, actor, { operationId, itemId, quantity, amountUsedCentiml, clientEventId });
+    return mutationResult(db, actor, operationId, outcome, `${outcome.lines[0]?.itemNameSnapshot ?? 'Item'} added to finished surgery`);
   });
 }
 
@@ -947,9 +1087,11 @@ export function getOperationSummary(
 
   for (const row of rows) {
     const existing = grouped.get(row.itemId);
+    const used = row.trackingMethodSnapshot === 'liquid' ? (row.amountUsedCentiml ?? 0) / 100 : row.quantity;
+    const appliedCost = row.appliedCostPerMeasureMicros ?? standardCostToMicros(row.unitCostSnapshotCents);
     if (existing) {
-      existing.line.quantity += row.quantity;
-      existing.unitCosts.add(row.unitCostSnapshotCents);
+      existing.line.quantity += used;
+      existing.unitCosts.add(appliedCost);
       existing.totalCents += row.lineTotalCents;
       continue;
     }
@@ -960,10 +1102,10 @@ export function getOperationSummary(
         name: row.itemNameSnapshot,
         reference: row.referenceNumberSnapshot,
         referenceKind: row.referenceNumberSnapshot ? 'Ref' : null,
-        quantity: row.quantity,
-        unitOfMeasurement: row.unitOfMeasurementSnapshot,
+        quantity: used,
+        unitOfMeasurement: row.trackingMethodSnapshot === 'liquid' ? 'ml' : row.unitOfMeasurementSnapshot,
       },
-      unitCosts: new Set([row.unitCostSnapshotCents]),
+      unitCosts: new Set([appliedCost]),
       totalCents: row.lineTotalCents,
     });
   }
@@ -976,7 +1118,8 @@ export function getOperationSummary(
     const [single] = unitCosts.size === 1 ? [...unitCosts] : [undefined];
     return {
       ...line,
-      ...(single !== undefined ? { unitCostFormatted: formatCents(single) } : {}),
+      ...(single !== undefined ? { unitCostFormatted: line.unitOfMeasurement === 'ml'
+        ? formatCostPerMeasureMicros(single) : formatCents(Math.round(single / 10_000)) } : {}),
       lineTotalFormatted: formatCents(totalCents),
     };
   });

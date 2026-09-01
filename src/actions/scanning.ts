@@ -21,6 +21,8 @@ export interface BarcodeConfirmationComponentView {
   quantity: number;
   unitOfMeasurement: string;
   currentQuantity: number;
+  trackingMethod?: 'standard' | 'liquid';
+  liquidAmountCentiml?: number | null;
 }
 
 export interface BarcodeConfirmationView {
@@ -29,11 +31,12 @@ export interface BarcodeConfirmationView {
   id: number;
   name: string;
   internalCode: string;
-  photoUrl: string | null;
   referenceNumber: string | null;
   currentQuantity: number | null;
   unitOfMeasurement: string | null;
   components: BarcodeConfirmationComponentView[];
+  trackingMethod: 'standard' | 'liquid' | null;
+  availableMl: string | null;
 }
 
 export interface SelectionSearchResultView {
@@ -41,10 +44,11 @@ export interface SelectionSearchResultView {
   id: number;
   name: string;
   internalCode: string;
-  photoUrl: string | null;
   referenceNumber: string | null;
   currentQuantity: number | null;
   unitOfMeasurement: string | null;
+  trackingMethod: 'standard' | 'liquid' | null;
+  availableMl: string | null;
 }
 
 function relevance(
@@ -102,10 +106,13 @@ export function searchSelectionTargetsForConfirmation(
       id: item.id,
       name: item.name,
       internalCode: item.internalCode,
-      photoUrl: item.photoUrl,
       referenceNumber: item.referenceNumber,
       currentQuantity: item.currentQuantity,
       unitOfMeasurement: item.unitOfMeasurement,
+      trackingMethod: item.trackingMethod,
+      availableMl: item.trackingMethod === 'liquid' && item.liquidVolumePerVialCentiml
+        ? ((item.liquidUnopenedVials * item.liquidVolumePerVialCentiml + item.liquidOpenVialCentiml) / 100).toFixed(2)
+        : null,
     }));
 
     if (input.includePacks) {
@@ -115,10 +122,11 @@ export function searchSelectionTargetsForConfirmation(
           id: pack.id,
           name: pack.name,
           internalCode: pack.internalCode,
-          photoUrl: pack.photoUrl,
           referenceNumber: null,
           currentQuantity: null,
           unitOfMeasurement: null,
+          trackingMethod: null,
+          availableMl: null,
         })),
       );
     }
@@ -150,11 +158,14 @@ export function resolveBarcodeForConfirmation(
         id: target.item.id,
         name: target.item.name,
         internalCode: target.item.internalCode,
-        photoUrl: target.item.photoUrl,
         referenceNumber: target.item.referenceNumber,
         currentQuantity: target.item.currentQuantity,
         unitOfMeasurement: target.item.unitOfMeasurement,
         components: [],
+        trackingMethod: target.item.trackingMethod,
+        availableMl: target.item.trackingMethod === 'liquid' && target.item.liquidVolumePerVialCentiml
+          ? ((target.item.liquidUnopenedVials * target.item.liquidVolumePerVialCentiml + target.item.liquidOpenVialCentiml) / 100).toFixed(2)
+          : null,
       };
     }
 
@@ -170,7 +181,6 @@ export function resolveBarcodeForConfirmation(
       id: target.pack.id,
       name: target.pack.name,
       internalCode: target.pack.internalCode,
-      photoUrl: target.pack.photoUrl,
       referenceNumber: null,
       currentQuantity: null,
       unitOfMeasurement: null,
@@ -180,7 +190,13 @@ export function resolveBarcodeForConfirmation(
         quantity: component.quantity,
         unitOfMeasurement: component.item.unitOfMeasurement,
         currentQuantity: component.item.currentQuantity,
+        ...(component.item.trackingMethod === 'liquid' ? {
+          trackingMethod: 'liquid' as const,
+          liquidAmountCentiml: component.liquidAmountCentiml,
+        } : {}),
       })),
+      trackingMethod: null,
+      availableMl: null,
     };
   });
 }

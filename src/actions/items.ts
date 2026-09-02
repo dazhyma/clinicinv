@@ -28,6 +28,7 @@ import {
   adjustStock,
   adjustLiquidStock,
   createItem,
+  convertItemToLiquid,
   deleteItem,
   getItem,
   isLowStock,
@@ -449,6 +450,25 @@ export function deleteItemAction(
       name: result.item.name,
       disposition: result.disposition,
     };
+  });
+}
+
+export function convertItemToLiquidAction(db: AppDatabase, actor: Actor, input: {
+  itemId?: RawFormValue;
+  volumePerVialMl?: RawFormValue;
+  costPerVial?: RawFormValue;
+}): ActionResult<UpdatedItem> {
+  if (!isAdmin(actor)) return forbidden('convert an item to liquid volume');
+  const v = new FieldValidator();
+  const itemId = v.requiredInteger('itemId', input.itemId, 'Item', { min: 1 });
+  const costPerVialCents = v.requiredCents('costPerVial', input.costPerVial, 'Cost per Vial');
+  let volumePerVialCentiml = 0;
+  try { volumePerVialCentiml = parseMlToCentiml(v.text(input.volumePerVialMl), 'Volume per Vial'); }
+  catch (error) { v.add('volumePerVialMl', error instanceof Error ? error.message : 'Volume per Vial is invalid'); }
+  if (v.hasErrors) return failFields(v.errors);
+  return runAction(() => {
+    const item = convertItemToLiquid(db, actor, { itemId, volumePerVialCentiml, costPerVialCents });
+    return { itemId: item.id, internalCode: item.internalCode, name: item.name };
   });
 }
 

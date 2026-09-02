@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { createItemAction, adjustStockAction } from '@/actions/items';
+import { createItemAction, adjustStockAction, convertItemToLiquidAction } from '@/actions/items';
 import { applyInventoryCountAction, recordCountLineAction, startInventoryCountAction } from '@/actions/inventory-count';
 import { getInventoryHistoryForActor } from '@/actions/inventory-history';
 import { listItemsForActor } from '@/actions/items';
-import { addItemToOperationAction, addMissingItemAction, editFinishedLineCostAction, finishOperationAction, startOperationAction } from '@/actions/operations';
+import { addItemToOperationAction, addMissingItemAction, editFinishedLineCostAction, editFinishedSurgeryTypeAction, finishOperationAction, startOperationAction } from '@/actions/operations';
 import { createPackAction } from '@/actions/packs';
 import { listItemHistory } from '@/domain/item-history';
 import { getItem } from '@/domain/items';
@@ -20,6 +20,60 @@ function data<T>(result: { ok: boolean }): T {
 }
 
 describe('liquid inventory', () => {
+  it('converts safe Standard stock to unopened liquid vials without changing its identity', () => {
+    const ctx = setupTestDb();
+    const created = data<{ itemId: number; internalCode: string }>(createItemAction(ctx.db, ctx.admin, {
+      name: 'Convertible Drug', trackingMethod: 'standard', costPerUnit: '12.00',
+      unitOfMeasurement: 'vial', initialQuantity: '3',
+    }));
+    data(convertItemToLiquidAction(ctx.db, ctx.admin, { itemId: created.itemId,
+      volumePerVialMl: '5.25', costPerVial: '15.00' }));
+    expect(getItem(ctx.db, created.itemId)).toMatchObject({ internalCode: created.internalCode,
+      trackingMethod: 'liquid', currentQuantity: 0, liquidUnopenedVials: 3,
+      liquidOpenVialCentiml: 0, liquidVolumePerVialCentiml: 525, currentUnitCostCents: 1500 });
+    expect(liquidMovementInvariantViolations(ctx.db)).toEqual([]);
+  });
+
+  it('blocks Standard to Liquid conversion while the item belongs to a Pack', () => {
+    const ctx = setupTestDb();
+    const item = data<{ itemId: number }>(createItemAction(ctx.db, ctx.admin, {
+      name: 'Packed Drug', trackingMethod: 'standard', costPerUnit: '1',
+      unitOfMeasurement: 'vial', initialQuantity: '2',
+    }));
+    data(createPackAction(ctx.db, ctx.staff, { name: 'Blocking Pack',
+      components: [{ itemId: item.itemId, quantity: '1' }] }));
+    const result = convertItemToLiquidAction(ctx.db, ctx.admin, { itemId: item.itemId,
+      volumePerVialMl: '10', costPerVial: '1' });
+    expect(result.ok).toBe(false);
+    expect(getItem(ctx.db, item.itemId)?.trackingMethod).toBe('standard');
+  });
+
+  it('blocks conversion for an item in an Active Surgery or draft Inventory Count', () => {
+    const active = setupTestDb();
+    const activeItem = data<{ itemId: number }>(createItemAction(active.db, active.admin, {
+      name: 'Active Drug', trackingMethod: 'standard', costPerUnit: '1',
+      unitOfMeasurement: 'vial', initialQuantity: '2',
+    }));
+    const surgery = data<{ operationId: number }>(startOperationAction(active.db, active.staff, {
+      doctorId: active.doctor.id, patientId: '5', surgeryTypeName: '',
+    }));
+    data(addItemToOperationAction(active.db, active.staff, { operationId: surgery.operationId,
+      itemId: activeItem.itemId, quantity: '1', clientEventId: 'conversion-active' }));
+    expect(convertItemToLiquidAction(active.db, active.admin, { itemId: activeItem.itemId,
+      volumePerVialMl: '5', costPerVial: '1' }).ok).toBe(false);
+
+    const count = setupTestDb();
+    const countItem = data<{ itemId: number }>(createItemAction(count.db, count.admin, {
+      name: 'Count Drug', trackingMethod: 'standard', costPerUnit: '1',
+      unitOfMeasurement: 'vial', initialQuantity: '2',
+    }));
+    const draft = data<{ id: number }>(startInventoryCountAction(count.db, count.staff));
+    data(recordCountLineAction(count.db, count.staff, { countId: draft.id,
+      itemId: countItem.itemId, countedQuantity: '2' }));
+    expect(convertItemToLiquidAction(count.db, count.admin, { itemId: countItem.itemId,
+      volumePerVialMl: '5', costPerVial: '1' }).ok).toBe(false);
+  });
+
   it('parses precise cost per ml and Miami wall time without browser timezone assumptions', () => {
     expect(parseDollarsToMicros('0.012345')).toBe(12_345);
     const summer = clinicLocalDateTimeToUtc('2026-07-15T09:30');
@@ -40,8 +94,11 @@ describe('liquid inventory', () => {
     const operation = data<{ operationId: number }>(startOperationAction(ctx.db, ctx.staff, {
       doctorId: ctx.doctor.id, patientId: '00012', surgeryTypeId: type.id,
     }));
-    data(addItemToOperationAction(ctx.db, ctx.staff, { operationId: operation.operationId,
-      itemId: created.itemId, amountUsedMl: '8.00', clientEventId: 'liquid-use-1' }));
+    const added = data<{ state: { lines: { amountUsedFormatted: string | null }[] } }>(
+      addItemToOperationAction(ctx.db, ctx.staff, { operationId: operation.operationId,
+        itemId: created.itemId, amountUsedMl: '8.00', clientEventId: 'liquid-use-1' }),
+    );
+    expect(added.state.lines[0]?.amountUsedFormatted).toBe('8');
 
     const item = getItem(ctx.db, created.itemId)!;
     expect(item.liquidUnopenedVials).toBe(8);
@@ -124,13 +181,27 @@ describe('liquid inventory', () => {
 });
 
 describe('Surgery metadata and controlled finished edits', () => {
-  it('requires a saved type once the dictionary exists and keeps its snapshot', () => {
+  it('accepts optional and free Surgery Types, deduplicates suggestions, and preserves casing', () => {
     const ctx = setupTestDb(); const type = createSurgeryType(ctx.db, ctx.admin, 'Retina');
-    expect(startOperationAction(ctx.db, ctx.staff, { doctorId: ctx.doctor.id, patientId: '1' }).ok).toBe(false);
     const started = data<{ operationId: number }>(startOperationAction(ctx.db, ctx.staff, {
-      doctorId: ctx.doctor.id, patientId: '1', surgeryTypeId: type.id }));
-    expect(getOperation(ctx.db, started.operationId)?.surgeryTypeNameSnapshot).toBe('Retina');
+      doctorId: ctx.doctor.id, patientId: '1', surgeryTypeName: '  RETINA  ' }));
+    expect(getOperation(ctx.db, started.operationId)).toMatchObject({ surgeryTypeId: type.id,
+      surgeryTypeNameSnapshot: 'RETINA' });
     expect(listSurgeryTypes(ctx.db, ctx.staff).map((entry) => entry.name)).toContain('Retina');
+    expect(listSurgeryTypes(ctx.db, ctx.staff).filter((entry) => entry.name.toLowerCase() === 'retina')).toHaveLength(1);
+  });
+
+  it('lets Admin set, replace, and clear the Surgery Type on a Finished surgery', () => {
+    const ctx = setupTestDb();
+    const started = data<{ operationId: number }>(startOperationAction(ctx.db, ctx.staff, {
+      doctorId: ctx.doctor.id, patientId: '2', surgeryTypeName: '' }));
+    data(finishOperationAction(ctx.db, ctx.staff, started.operationId));
+    data(editFinishedSurgeryTypeAction(ctx.db, ctx.admin, { operationId: started.operationId,
+      surgeryTypeName: 'New Combined Type' }));
+    expect(getOperation(ctx.db, started.operationId)?.surgeryTypeNameSnapshot).toBe('New Combined Type');
+    data(editFinishedSurgeryTypeAction(ctx.db, ctx.admin, { operationId: started.operationId,
+      surgeryTypeName: '' }));
+    expect(getOperation(ctx.db, started.operationId)?.surgeryTypeNameSnapshot).toBeNull();
   });
 
   it('persists one OR interval and blocks finish until stopped', () => {

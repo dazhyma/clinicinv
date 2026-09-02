@@ -54,4 +54,26 @@ describe('Surgery terminology and Patient ID UI contract', () => {
     expect(filters).not.toMatch(/params\.set\(['"]patientId/);
     expect(filters).not.toMatch(/\/operations\?patientId/);
   });
+
+  it('keeps one Finished Items Used list with compact summary and row-level cost editing', () => {
+    const page = read('src/app/operations/[id]/page.tsx');
+    const actions = read('src/app/operations/_components/finished-admin-actions.tsx');
+    expect(page).toContain('Items used');
+    expect(page).not.toContain('<SummaryTable');
+    expect(page).toContain('Print Summary');
+    expect(page).toContain('<CostEditButton');
+    expect(actions).toContain('Edit Cost');
+    expect(actions).not.toContain('placeholder="Search item"');
+  });
+
+  it('uses optional free-text Surgery Type inputs for creation and Finished edits', () => {
+    const dialog = read('src/app/operations/_components/create-operation-dialog.tsx');
+    const finished = read('src/app/operations/_components/finished-admin-actions.tsx');
+    expect(dialog).toContain('name="surgeryTypeName"');
+    expect(dialog).toContain('<datalist id="surgery-type-suggestions">');
+    expect(dialog).not.toContain('name="surgeryTypeId"');
+    expect(finished).toContain('finished-surgery-type-suggestions');
+    expect(finished).toContain('Add Surgery Type');
+    expect(finished).toContain('Edit Surgery Type');
+  });
 });

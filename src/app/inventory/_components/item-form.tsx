@@ -45,7 +45,7 @@ export function ItemForm({ mode, action, options, item, unitCostValue }: {
       {item ? (
         <section className="rounded-xl bg-slate-100 px-4 py-3 text-base text-slate-700">
           <p>Item Code: <strong className="font-mono">{item.internalCode}</strong></p>
-          <p className="mt-1 text-sm text-slate-500">The Item Code, barcode and tracking method are permanent.</p>
+          <p className="mt-1 text-sm text-slate-500">The Item Code and barcode are permanent. Tracking method cannot be changed from this form.</p>
         </section>
       ) : null}
 

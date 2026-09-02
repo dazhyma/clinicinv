@@ -7,6 +7,7 @@ import { AppHeader } from '../../../_components/app-header';
 import { DeleteDialog } from '../../_components/delete-dialog';
 import { deleteItemFormAction } from '../../actions';
 import { itemsReturnPath } from '../../_components/items-return-path';
+import { ConvertLiquidDialog } from '../../_components/convert-liquid-dialog';
 
 export const dynamic = 'force-dynamic';
 
@@ -93,6 +94,7 @@ export default async function ItemDetailPage({
               >
                 Item History
               </Link>
+              {item.trackingMethod === 'standard' ? <ConvertLiquidDialog item={item} /> : null}
             </>
           ) : null}
         </div>

@@ -41,7 +41,7 @@ export function CreateOperationDialog({
   const label = hasActiveOperations ? 'Start Another Surgery' : 'Start New Surgery';
   // Врач с незакрытой операцией и переполненные кабинеты объясняются ДО выбора:
   // сервер откажет в любом случае, но узнавать об этом отказом — плохо.
-  const blocked = rooms.allBusy || available.length === 0 || surgeryTypes.length === 0;
+  const blocked = rooms.allBusy || available.length === 0;
 
   return (
     <>
@@ -78,9 +78,7 @@ export function CreateOperationDialog({
             {doctors.length === 0 || blocked ? (
               <>
                 <Alert tone="warning" className="mt-5">
-                  {surgeryTypes.length === 0
-                    ? 'No Surgery Types have been added yet. An administrator adds them in Settings → Surgery Types.'
-                    : doctors.length === 0
+                  {doctors.length === 0
                     ? 'No doctors have been added yet. An administrator adds them in Settings → Doctors.'
                     : rooms.allBusy
                       ? `All ${rooms.rooms} operating rooms are in use. Finish one of the active surgeries before starting another.`
@@ -184,12 +182,20 @@ export function CreateOperationDialog({
                 ) : null}
                 {doctorId ? (
                   <div>
-                    <FieldLabel htmlFor="surgeryTypeId">Surgery Type</FieldLabel>
-                    <Select id="surgeryTypeId" name="surgeryTypeId" required className="mt-1 w-full text-lg">
-                      <option value="">Select a Surgery Type…</option>
-                      {surgeryTypes.map(type => <option key={type.id} value={type.id}>{type.name}</option>)}
-                    </Select>
-                    {state.fieldErrors?.surgeryTypeId ? <p className="mt-1 text-sm font-medium text-red-700">{state.fieldErrors.surgeryTypeId}</p> : null}
+                    <FieldLabel htmlFor="surgeryTypeName">Surgery Type (optional)</FieldLabel>
+                    <Input
+                      id="surgeryTypeName"
+                      name="surgeryTypeName"
+                      list="surgery-type-suggestions"
+                      maxLength={120}
+                      autoComplete="off"
+                      placeholder="Choose or enter a Surgery Type"
+                      className="mt-1 w-full text-lg"
+                    />
+                    <datalist id="surgery-type-suggestions">
+                      {surgeryTypes.map(type => <option key={type.id} value={type.name} />)}
+                    </datalist>
+                    {state.fieldErrors?.surgeryTypeName ? <p className="mt-1 text-sm font-medium text-red-700">{state.fieldErrors.surgeryTypeName}</p> : null}
                   </div>
                 ) : null}
                 <p className="mt-2 text-base text-slate-600">

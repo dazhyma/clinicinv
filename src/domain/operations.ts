@@ -62,6 +62,7 @@ import { getPackComposition, type PackComponent } from './packs';
 import { assertNonNegativeQuantity, assertPositiveQuantity } from './quantity';
 import { getIntSetting, getNegativeStockMode, SETTING_KEYS } from './settings';
 import { applyLiquidMovement } from './liquid-movements';
+import { resolveSurgeryTypeSuggestion } from './surgery-types';
 import {
   consumeLiquidStock,
   liquidLineTotalCents,
@@ -433,6 +434,8 @@ export interface StartOperationInput {
   /** Только цифры; зашифрованная строка сохраняет ведущие нули (D-72). */
   patientId: string;
   surgeryTypeId?: number;
+  /** Необязательный свободный текст; совпадения переиспользуют подсказку. */
+  surgeryTypeName?: string | null;
   /** Только значение из закрытого справочника обобщённых категорий (§2.4, Q-2). */
   procedureCategory?: string | null;
 }
@@ -475,6 +478,9 @@ export function startOperation(
     if (input.surgeryTypeId != null && !surgeryType) {
       throw errors.validationFailed('Select an active Surgery Type');
     }
+    const resolvedSurgeryType = input.surgeryTypeName !== undefined
+      ? resolveSurgeryTypeSuggestion(tx, actor, input.surgeryTypeName)
+      : { id: surgeryType?.id ?? null, snapshot: surgeryType?.name ?? null };
     assertRoomAvailable(tx, doctor);
     const now = new Date();
 
@@ -501,8 +507,8 @@ export function startOperation(
           doctorNameSnapshot: doctor.lastName,
           status: 'Active',
           procedureCategory: input.procedureCategory?.trim() || null,
-          surgeryTypeId: surgeryType?.id ?? null,
-          surgeryTypeNameSnapshot: surgeryType?.name ?? null,
+          surgeryTypeId: resolvedSurgeryType.id,
+          surgeryTypeNameSnapshot: resolvedSurgeryType.snapshot,
           patientIdEncrypted: encryptPatientId(input.patientId),
           patientIdLookup: patientIdLookup(input.patientId),
           totalCostSnapshotCents: null,
@@ -1234,6 +1240,39 @@ export function editFinishedLineCost(
     writeAudit(tx, { action: AUDIT_ACTIONS.operationAppliedCostChanged, actorAccountId: actor.accountId,
       actorRole: actor.role, entityType: 'operation', entityId: operation.id,
       summary: `Applied cost corrected for ${line.itemNameSnapshot} in case ${displayCaseCode(operation)}` });
+    return updated;
+  });
+}
+
+/** Admin может исправить только снимок типа выбранной Finished Surgery. */
+export function editFinishedSurgeryType(
+  db: AppDatabase,
+  actor: Actor,
+  operationId: number,
+  surgeryTypeName: string | null,
+): OperationRow {
+  assertAdmin(actor, 'edit Surgery Type');
+  return runInTransaction(db, (tx) => {
+    const operation = getOperation(tx, operationId);
+    if (!operation) throw errors.operationNotFound(operationId);
+    if (operation.status !== 'Finished') {
+      throw errors.validationFailed('Surgery Type can be edited only in a Finished surgery');
+    }
+    const resolved = resolveSurgeryTypeSuggestion(tx, actor, surgeryTypeName);
+    const now = new Date();
+    const updated = tx.update(operations).set({
+      surgeryTypeId: resolved.id,
+      surgeryTypeNameSnapshot: resolved.snapshot,
+      updatedAt: now,
+    }).where(eq(operations.id, operation.id)).returning().get();
+    writeAudit(tx, {
+      action: AUDIT_ACTIONS.operationSurgeryTypeChanged,
+      actorAccountId: actor.accountId,
+      actorRole: actor.role,
+      entityType: 'operation',
+      entityId: operation.id,
+      summary: `Case ${displayCaseCode(operation)}: ${operation.surgeryTypeNameSnapshot ?? 'Not provided'} -> ${resolved.snapshot ?? 'Not provided'}`,
+    });
     return updated;
   });
 }

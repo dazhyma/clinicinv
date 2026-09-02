@@ -26,6 +26,7 @@ import {
   deleteVoidedOperationAction,
   finishOperationAction,
   editFinishedLineCostAction,
+  editFinishedSurgeryTypeAction,
   editOrTimeAction,
   scanIntoOperationAction,
   searchPastSurgeriesByPatientIdAction,
@@ -77,7 +78,7 @@ export async function startOperationFormAction(
   const result = startOperationAction(getDb(), auth.actor, {
     doctorId: String(formData.get('doctorId') ?? ''),
     patientId: String(formData.get('patientId') ?? ''),
-    surgeryTypeId: String(formData.get('surgeryTypeId') ?? ''),
+    surgeryTypeName: String(formData.get('surgeryTypeName') ?? ''),
   });
   if (!result.ok) return { error: result.error, fieldErrors: result.fieldErrors };
 
@@ -187,6 +188,21 @@ export async function editAppliedCostServerAction(input: { operationId: number; 
   const auth = await actorOrFailure(); if ('failure' in auth) return auth.failure;
   const result = editFinishedLineCostAction(getDb(), auth.actor, input);
   if (result.ok) revalidatePath(`/operations/${input.operationId}`);
+  return result;
+}
+
+export async function editSurgeryTypeServerAction(input: {
+  operationId: number;
+  surgeryTypeName: string;
+}): Promise<ActionResult<OperationStateView>> {
+  const auth = await actorOrFailure();
+  if ('failure' in auth) return auth.failure;
+  const result = editFinishedSurgeryTypeAction(getDb(), auth.actor, input);
+  if (result.ok) {
+    revalidatePath('/operations');
+    revalidatePath(`/operations/${input.operationId}`);
+    revalidatePath('/reports');
+  }
   return result;
 }
 

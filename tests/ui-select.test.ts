@@ -31,6 +31,9 @@ describe('shared Select UI contract', () => {
     expect(source).toContain("event.key === 'Escape'");
     expect(source).toContain("new Event('change', { bubbles: true })");
     expect(source).toContain('createPortal');
+    expect(source).not.toContain('scrollIntoView');
+    expect(source).toContain('listbox.scrollTop');
+    expect(source).toContain('preventScroll: true');
   });
 
   it('does not turn existing datalist text fields into new dropdowns', () => {

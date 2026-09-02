@@ -85,6 +85,7 @@ export function Select({
   const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
   const triggerRef = useRef<HTMLButtonElement>(null);
   const nativeRef = useRef<HTMLSelectElement>(null);
+  const listboxRef = useRef<HTMLDivElement>(null);
   const optionRefs = useRef<Array<HTMLDivElement | null>>([]);
   const typeaheadRef = useRef('');
   const typeaheadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -159,7 +160,13 @@ export function Select({
 
   useEffect(() => {
     if (!open || activeIndex < 0) return;
-    optionRefs.current[activeIndex]?.scrollIntoView({ block: 'nearest' });
+    const listbox = listboxRef.current;
+    const option = optionRefs.current[activeIndex];
+    if (!listbox || !option) return;
+    if (option.offsetTop < listbox.scrollTop) listbox.scrollTop = option.offsetTop;
+    else if (option.offsetTop + option.offsetHeight > listbox.scrollTop + listbox.clientHeight) {
+      listbox.scrollTop = option.offsetTop + option.offsetHeight - listbox.clientHeight;
+    }
   }, [activeIndex, open]);
 
   function openMenu(preferredIndex = selectedIndex) {
@@ -183,7 +190,7 @@ export function Select({
     const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
     setter?.call(native, option.value);
     native.dispatchEvent(new Event('change', { bubbles: true }));
-    triggerRef.current?.focus();
+    triggerRef.current?.focus({ preventScroll: true });
   }
 
   function move(direction: 1 | -1) {
@@ -288,6 +295,7 @@ export function Select({
       {open && typeof document !== 'undefined'
         ? createPortal(
             <div
+              ref={listboxRef}
               id={listboxId}
               role="listbox"
               aria-labelledby={selectId}

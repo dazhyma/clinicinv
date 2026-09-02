@@ -6,8 +6,50 @@ import { AUDIT_ACTIONS, writeAudit } from './audit';
 import { errors } from './errors';
 import { runInTransaction } from './movements';
 
+export function cleanSurgeryTypeName(value: string): string {
+  return value.normalize('NFKC').trim().replace(/\s+/g, ' ');
+}
+
 export function normalizeSurgeryTypeName(value: string): string {
-  return value.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en-US');
+  return cleanSurgeryTypeName(value).toLocaleLowerCase('en-US');
+}
+
+/**
+ * Свободный Surgery Type сохраняется как снимок операции, а нормализованное
+ * значение служит только для переиспользования подсказки без дублей.
+ */
+export function resolveSurgeryTypeSuggestion(
+  tx: DbLike,
+  actor: Actor,
+  rawName: string | null | undefined,
+): { id: number | null; snapshot: string | null } {
+  assertAuthenticated(actor);
+  const snapshot = cleanSurgeryTypeName(rawName ?? '');
+  if (!snapshot) return { id: null, snapshot: null };
+  const normalizedName = normalizeSurgeryTypeName(snapshot);
+  const existing = tx.select().from(surgeryTypes)
+    .where(eq(surgeryTypes.normalizedName, normalizedName)).get();
+  if (existing) return { id: existing.id, snapshot };
+
+  const now = new Date();
+  const created = tx.insert(surgeryTypes).values({
+    name: snapshot,
+    normalizedName,
+    status: 'active',
+    createdAt: now,
+    updatedAt: now,
+    createdByAccountId: actor.accountId,
+    updatedByAccountId: actor.accountId,
+  }).returning().get();
+  writeAudit(tx, {
+    action: AUDIT_ACTIONS.surgeryTypeCreated,
+    actorAccountId: actor.accountId,
+    actorRole: actor.role,
+    entityType: 'surgery_type',
+    entityId: created.id,
+    summary: snapshot,
+  });
+  return { id: created.id, snapshot };
 }
 
 export function listSurgeryTypes(
@@ -25,7 +67,7 @@ export function listSurgeryTypes(
 
 export function createSurgeryType(db: AppDatabase, actor: Actor, rawName: string): SurgeryTypeRow {
   assertAdmin(actor, 'create surgery type');
-  const name = rawName.normalize('NFKC').trim().replace(/\s+/g, ' ');
+  const name = cleanSurgeryTypeName(rawName);
   if (!name) throw errors.validationFailed('Surgery Type name is required');
   return runInTransaction(db, (tx) => {
     const normalizedName = normalizeSurgeryTypeName(name);
@@ -62,7 +104,7 @@ export function updateSurgeryType(
     if (!existing) throw errors.validationFailed('Surgery Type not found');
     const name = input.name == null
       ? existing.name
-      : input.name.normalize('NFKC').trim().replace(/\s+/g, ' ');
+      : cleanSurgeryTypeName(input.name);
     if (!name) throw errors.validationFailed('Surgery Type name is required');
     const normalizedName = normalizeSurgeryTypeName(name);
     const duplicate = tx.select({ id: surgeryTypes.id }).from(surgeryTypes)

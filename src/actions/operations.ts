@@ -53,6 +53,7 @@ import {
   stopOrTimer,
   editOrTime,
   editFinishedLineCost,
+  editFinishedSurgeryType,
   startOperation,
   summarizeOperations,
   undoLastScan,
@@ -180,7 +181,9 @@ function toLineView(
     quantity: line.quantity,
     trackingMethod: line.trackingMethodSnapshot,
     amountUsedCentiml: line.amountUsedCentiml,
-    amountUsedFormatted: line.amountUsedCentiml == null ? null : formatCentiml(line.amountUsedCentiml),
+    amountUsedFormatted: line.amountUsedCentiml == null
+      ? null
+      : formatCentiml(line.amountUsedCentiml).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1'),
     manufacturer: line.manufacturerNameSnapshot,
     addedAfterFinish: line.addedAfterFinish,
     sourceType: line.sourceType,
@@ -488,31 +491,33 @@ export interface StartedOperation {
  * перезаписывает существующую активную операцию (§8.5, §18.24): домен просто
  * вставляет ещё одну строку, ничего не ища и не обновляя.
  *
- * Surgery Type выбирается только из закрытого Admin-справочника. Свободного
- * текста здесь нет: это сохраняет согласованное ограничение на пациентские
- * данные и даёт стабильный разрез для отчётов.
+ * Surgery Type необязателен: свободный текст сохраняется снимком, а
+ * регистронезависимое совпадение переиспользует suggestion для отчётов (D-81).
  */
 export function startOperationAction(
   db: AppDatabase,
   actor: Actor,
-  input: { doctorId?: RawFormValue; patientId?: RawFormValue; surgeryTypeId?: RawFormValue } = {},
+  input: { doctorId?: RawFormValue; patientId?: RawFormValue; surgeryTypeId?: RawFormValue; surgeryTypeName?: RawFormValue } = {},
 ): ActionResult<StartedOperation> {
   const v = new FieldValidator();
   const doctorId = v.requiredInteger('doctorId', input.doctorId, 'Doctor', { min: 1 });
   const patientId = v.text(input.patientId);
-  const surgeryTypeId = v.requiredInteger(
-    'surgeryTypeId',
-    input.surgeryTypeId,
-    'Surgery Type',
-    { min: 1 },
-  );
+  const surgeryTypeName = v.optionalText('surgeryTypeName', input.surgeryTypeName, 120);
+  const surgeryTypeId = input.surgeryTypeName === undefined
+    ? v.requiredInteger('surgeryTypeId', input.surgeryTypeId, 'Surgery Type', { min: 1 })
+    : undefined;
   if (!patientId) v.add('patientId', 'Patient ID is required.');
   else if (patientId.length > 64) v.add('patientId', 'Patient ID must be 64 digits or fewer.');
   else if (!/^\d+$/.test(patientId)) v.add('patientId', 'Patient ID must contain digits only.');
   if (v.hasErrors) return failFields(v.errors, 'Enter the required surgery details.');
 
   return runAction(() => {
-    const operation = startOperation(db, actor, { doctorId, patientId, surgeryTypeId });
+    const operation = startOperation(db, actor, {
+      doctorId,
+      patientId,
+      surgeryTypeId,
+      ...(input.surgeryTypeName === undefined ? {} : { surgeryTypeName }),
+    });
     return {
       operationId: operation.id,
       caseCode: displayCaseCode(operation),
@@ -910,6 +915,21 @@ export function editFinishedLineCostAction(db: AppDatabase, actor: Actor, input:
     editFinishedLineCost(db, actor, operationId, lineId, micros, reason);
     return toStateView(db, actor, getOperation(db, operationId)!);
   });
+}
+
+export function editFinishedSurgeryTypeAction(db: AppDatabase, actor: Actor, input: {
+  operationId: RawFormValue; surgeryTypeName?: RawFormValue;
+}): ActionResult<OperationStateView> {
+  if (!isAdmin(actor)) return forbidden('edit Surgery Type');
+  const v = new FieldValidator();
+  const operationId = v.requiredInteger('operationId', input.operationId, 'Surgery', { min: 1 });
+  const surgeryTypeName = v.optionalText('surgeryTypeName', input.surgeryTypeName, 120) ?? null;
+  if (v.hasErrors) return failFields(v.errors);
+  return runAction(() => toStateView(
+    db,
+    actor,
+    editFinishedSurgeryType(db, actor, operationId, surgeryTypeName),
+  ));
 }
 
 export function addMissingItemAction(db: AppDatabase, actor: Actor, input: AddItemInput): ActionResult<OperationMutationResult> {

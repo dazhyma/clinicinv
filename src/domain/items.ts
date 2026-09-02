@@ -10,11 +10,13 @@ import type { AppDatabase, DbLike } from '@/db/client';
 import {
   barcodeRegistry,
   inventoryCountLines,
+  inventoryCounts,
   inventoryMovements,
   liquidInventoryMovements,
   itemHistoryEvents,
   items,
   operationItems,
+  operations,
   packItems,
   DEFAULT_UNITS_OF_MEASUREMENT,
   type EntityStatus,
@@ -637,6 +639,84 @@ export function adjustLiquidStock(
       openVialCentimlAfter: movement.openVialCentiml,
       applied: movement.created,
     };
+  });
+}
+
+export interface ConvertItemToLiquidInput {
+  itemId: number;
+  volumePerVialCentiml: number;
+  costPerVialCents: number;
+}
+
+/**
+ * Односторонняя конвертация Standard → Liquid. Исторические строки операций и
+ * движения остаются неизменными; текущий стандартный остаток переносится как
+ * число запечатанных флаконов через два канонических журнала.
+ */
+export function convertItemToLiquid(
+  db: AppDatabase,
+  actor: Actor,
+  input: ConvertItemToLiquidInput,
+): ItemRow {
+  assertAdmin(actor, 'convert an item to liquid volume');
+  if (!Number.isSafeInteger(input.volumePerVialCentiml) || input.volumePerVialCentiml <= 0) {
+    throw errors.validationFailed('Volume per Vial must be greater than 0');
+  }
+  assertNonNegativeCents(input.costPerVialCents, 'Cost per Vial');
+  return runInTransaction(db, (tx) => {
+    const item = getItem(tx, input.itemId);
+    if (!item) throw errors.itemNotFound(input.itemId);
+    if (item.archivedAt) throw errors.validationFailed('Archived items cannot be converted');
+    if (item.trackingMethod !== 'standard') throw errors.validationFailed('Only a Standard Units item can be converted');
+    if (tx.select({ id: packItems.id }).from(packItems).where(eq(packItems.itemId, item.id)).limit(1).get()) {
+      throw errors.validationFailed('Remove this item from every Pack before converting it');
+    }
+    if (tx.select({ id: operationItems.id }).from(operationItems)
+      .innerJoin(operations, eq(operations.id, operationItems.operationId))
+      .where(and(eq(operationItems.itemId, item.id), eq(operations.status, 'Active'))).limit(1).get()) {
+      throw errors.validationFailed('Finish or remove this item from its Active Surgery before converting it');
+    }
+    if (tx.select({ id: inventoryCountLines.id }).from(inventoryCountLines)
+      .innerJoin(inventoryCounts, eq(inventoryCounts.id, inventoryCountLines.countId))
+      .where(and(eq(inventoryCountLines.itemId, item.id), eq(inventoryCounts.status, 'draft'))).limit(1).get()) {
+      throw errors.validationFailed('Complete or cancel the draft Inventory Count before converting this item');
+    }
+
+    if (item.currentQuantity > 0) applyMovement(tx, {
+      itemId: item.id,
+      movementType: 'manual_adjustment',
+      quantityDelta: -item.currentQuantity,
+      idempotencyKey: `convert-liquid:${item.id}:standard`,
+      reason: 'Converted to liquid volume tracking',
+      actorAccountId: actor.accountId,
+    });
+    const now = new Date();
+    tx.update(items).set({
+      trackingMethod: 'liquid',
+      unitOfMeasurement: 'ml',
+      currentUnitCostCents: input.costPerVialCents,
+      liquidVolumePerVialCentiml: input.volumePerVialCentiml,
+      liquidUnopenedVials: 0,
+      liquidOpenVialCentiml: 0,
+      lowStockThreshold: null,
+      updatedAt: now,
+    }).where(eq(items.id, item.id)).run();
+    applyLiquidMovement(tx, {
+      itemId: item.id,
+      movementType: 'initial',
+      next: { unopenedVials: item.currentQuantity, openVialCentiml: 0 },
+      idempotencyKey: `liquid:convert-liquid:${item.id}`,
+      reason: 'Converted from standard units',
+      vialCostAtReceiptCents: input.costPerVialCents,
+      actorAccountId: actor.accountId,
+    });
+    writeItemHistoryEvent(tx, { itemId: item.id, eventType: 'item.information_changed',
+      fieldName: 'trackingMethod', oldValue: 'Standard Units', newValue: 'Liquid Volume (ml)',
+      actorAccountId: actor.accountId, actorRole: actor.role, createdAt: now });
+    writeAudit(tx, { action: AUDIT_ACTIONS.itemConvertedToLiquid, actorAccountId: actor.accountId,
+      actorRole: actor.role, entityType: 'item', entityId: item.id,
+      summary: `${item.internalCode}: ${item.currentQuantity} units -> ${item.currentQuantity} unopened vials at ${input.volumePerVialCentiml} centi-ml each` });
+    return getItem(tx, item.id)!;
   });
 }
 

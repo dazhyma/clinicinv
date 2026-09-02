@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { listDoctorsAction } from '@/actions/doctors';
+import { listSurgeryTypesAction } from '@/actions/surgery-types';
 import {
   getOperationState,
   getOperationSummary,
@@ -16,9 +17,8 @@ import { DeleteOperationButton } from '../_components/delete-operation-dialog';
 import { OperationDoctorBar } from '../_components/doctor-bar';
 import { formatDateTime } from '../_components/format';
 import { OperationScreen } from '../_components/operation-screen';
-import { SummaryTable } from '../_components/summary-table';
 import { VoidOperationButton } from '../_components/void-dialog';
-import { FinishedAdminActions } from '../_components/finished-admin-actions';
+import { CostEditButton, FinishedAdminActions } from '../_components/finished-admin-actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -74,7 +74,7 @@ export default async function OperationPage({ params }: { params: Promise<{ id: 
             <>
               <ul className="flex flex-col gap-2">
                 {state.lines.map((line) => (
-                  <OperationLineRow key={line.id} line={line} />
+                  <OperationLineRow key={line.id} line={line} operationId={state.id} canEditCost={isAdmin && state.status === 'Finished'} />
                 ))}
               </ul>
 
@@ -87,33 +87,14 @@ export default async function OperationPage({ params }: { params: Promise<{ id: 
                   Total cost: <strong className="text-2xl">{state.totalCostFormatted}</strong>
                 </p>
               ) : null}
+              {summary ? <div className="mt-4 flex flex-wrap items-start gap-3">
+                <Link href={`/operations/${state.id}/summary`} className="rounded-xl bg-slate-900 px-6 py-3 text-lg font-semibold text-white">Print Summary</Link>
+                <CopySummaryButton text={summary.text} />
+              </div> : null}
             </>
           )}
         </section>
-
-        {summary ? (
-          <section className="mt-4 rounded-2xl bg-white p-4 ring-1 ring-slate-200 sm:p-5">
-            <h2 className="text-xl font-semibold">Symplast summary</h2>
-            <p className="mb-4 text-base text-slate-600">
-              Materials used, ready to be transferred manually. Patient ID is not included in this
-              summary.
-            </p>
-
-            <SummaryTable summary={summary} />
-
-            <div className="mt-4 flex flex-wrap items-start gap-3">
-              <Link
-                href={`/operations/${state.id}/summary`}
-                className="rounded-xl bg-slate-900 px-8 py-4 text-lg font-semibold text-white"
-              >
-                Print Summary
-              </Link>
-              <CopySummaryButton text={summary.text} />
-            </div>
-          </section>
-        ) : null}
-
-        {isAdmin && state.status === 'Finished' ? <FinishedAdminActions state={state} /> : null}
+        {isAdmin && state.status === 'Finished' ? <FinishedAdminActions state={state} surgeryTypes={listSurgeryTypesAction(db, actor)} /> : null}
 
         {isAdmin && state.canVoid ? (
           <section className="mt-4 rounded-2xl border border-red-200 bg-white p-4">
@@ -210,9 +191,9 @@ function OperationHeaderCard({ state }: { state: OperationStateView }) {
 
       <dl className="mt-4 grid gap-x-6 gap-y-2 sm:grid-cols-2">
         {rows.map((row) => (
-          <div key={row.label} className="flex flex-wrap gap-2">
-            <dt className="text-base text-slate-600">{row.label}:</dt>
-            <dd className="text-lg text-slate-900">{row.value}</dd>
+          <div key={row.label} className="flex min-w-0 items-center gap-2">
+            <dt className="shrink-0 text-base leading-7 text-slate-600">{row.label}:</dt>
+            <dd className="min-w-0 break-words text-lg leading-7 text-slate-900">{row.value}</dd>
           </div>
         ))}
       </dl>
@@ -244,7 +225,7 @@ function formatDuration(ms: number): string {
  * (§11.2, §18.15): предмет мог быть переименован, подорожать или вовсе исчезнуть
  * из состава пака, и на этой странице это ничего не меняет.
  */
-function OperationLineRow({ line }: { line: OperationLineView }) {
+function OperationLineRow({ line, operationId, canEditCost }: { line: OperationLineView; operationId: number; canEditCost: boolean }) {
   return (
     <li className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 p-3">
       <div className="min-w-48 flex-1">
@@ -268,17 +249,18 @@ function OperationLineRow({ line }: { line: OperationLineView }) {
 
       <div className="text-right">
         <p className="text-xl font-bold">
-          {line.quantity}
+          {line.trackingMethod === 'liquid' ? line.amountUsedFormatted : line.quantity}
           <span className="ml-1 text-base font-normal text-slate-600">
-            {line.unitOfMeasurement}
+            {line.trackingMethod === 'liquid' ? 'ml' : line.unitOfMeasurement}
           </span>
         </p>
         {line.unitCostFormatted ? (
-          <p className="text-base text-slate-600">{line.unitCostFormatted} / unit</p>
+          <p className="text-base text-slate-600">{line.unitCostFormatted} / {line.trackingMethod === 'liquid' ? 'ml' : 'unit'}</p>
         ) : null}
         {line.lineTotalFormatted ? (
           <p className="text-lg font-semibold">{line.lineTotalFormatted}</p>
         ) : null}
+        {canEditCost ? <CostEditButton operationId={operationId} line={line} /> : null}
       </div>
     </li>
   );

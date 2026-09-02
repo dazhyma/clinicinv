@@ -16,6 +16,7 @@ import { redirect } from 'next/navigation';
 import {
   adjustStockAction,
   createItemAction,
+  convertItemToLiquidAction,
   deleteItemAction,
   updateItemAction,
   receiveStockAction,
@@ -141,6 +142,25 @@ export async function deleteItemFormAction(
   redirect(
     `/inventory/catalog?${result.data.disposition === 'deleted' ? 'deleted' : 'archived'}=${encodeURIComponent(result.data.internalCode)}`,
   );
+}
+
+export async function convertItemToLiquidFormAction(
+  _previous: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const auth = await actorOrState();
+  if ('state' in auth) return auth.state;
+  if (!isAdmin(auth.actor)) return toStateFailure(errors.forbidden('convert an item to liquid volume'));
+  const result = convertItemToLiquidAction(getDb(), auth.actor, {
+    itemId: text(formData, 'itemId'),
+    volumePerVialMl: text(formData, 'volumePerVialMl'),
+    costPerVial: text(formData, 'costPerVial'),
+  });
+  if (!result.ok) return { ok: false, error: result.error, fieldErrors: result.fieldErrors };
+  revalidatePath('/inventory');
+  revalidatePath('/inventory/catalog');
+  revalidatePath(`/inventory/items/${result.data.itemId}`);
+  return { ok: true, message: 'Item converted to Liquid Volume (ml).' };
 }
 
 // --- Receive Stock (§5.8) ---------------------------------------------------

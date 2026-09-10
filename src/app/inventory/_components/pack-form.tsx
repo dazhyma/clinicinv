@@ -10,6 +10,7 @@ import { useUnsavedChanges } from '../../_components/use-unsaved-changes';
 import type { FormState } from '../actions';
 import { ErrorBanner, Field, SubmitButton } from './form-field';
 import { Select } from '../../_components/ui';
+import { SearchableItemSelect } from './searchable-item-select';
 
 const initialState: FormState = {};
 
@@ -72,6 +73,7 @@ export function PackForm({
   );
 
   const itemsById = new Map(items.map((item) => [String(item.id), item]));
+  const selectedItemIds = new Set(rows.map((row) => row.itemId).filter(Boolean));
 
   function updateRow(key: number, patch: Partial<CompositionRow>) {
     setRows((current) => current.map((row) => (row.key === key ? { ...row, ...patch } : row)));
@@ -149,22 +151,16 @@ export function PackForm({
                   <label htmlFor={`component-${index}-itemId`} className="text-sm text-slate-600">
                     Item
                   </label>
-                  <Select
+                  <SearchableItemSelect
                     id={`component-${index}-itemId`}
                     name="componentItemId"
+                    items={items}
                     value={row.itemId}
-                    onChange={(event) => updateRow(row.key, { itemId: event.target.value })}
-                    aria-invalid={itemError ? true : undefined}
-                    aria-describedby={itemError ? `component-${index}-itemId-error` : undefined}
-                    className="w-full"
-                  >
-                    <option value="">— select an item —</option>
-                    {items.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name} · {item.internalCode}
-                      </option>
-                    ))}
-                  </Select>
+                    excludedIds={selectedItemIds}
+                    onChange={(itemId) => updateRow(row.key, { itemId })}
+                    invalid={Boolean(itemError)}
+                    describedBy={itemError ? `component-${index}-itemId-error` : undefined}
+                  />
                   {itemError ? (
                     <p
                       id={`component-${index}-itemId-error`}

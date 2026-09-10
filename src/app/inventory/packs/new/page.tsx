@@ -19,7 +19,9 @@ export const dynamic = 'force-dynamic';
  */
 export default async function NewPackPage() {
   const { account, actor } = await requirePage();
-  const { items } = listItemsForActor(getDb(), actor, {});
+  // Поиск в форме локальный, поэтому ей нужен весь активный каталог, а не
+  // стандартные первые 200 строк списка Inventory (D-86).
+  const { items } = listItemsForActor(getDb(), actor, { limit: null });
 
   return (
     <main className="app-shell flex max-w-4xl flex-col">

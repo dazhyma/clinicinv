@@ -888,7 +888,8 @@ export interface ItemListFilters {
   lowStockOnly?: boolean;
   priceMissing?: boolean;
   includeInactive?: boolean;
-  limit?: number;
+  /** `null` запрашивает полный список для форм, которым нужен весь каталог. */
+  limit?: number | null;
 }
 
 /**
@@ -959,7 +960,9 @@ export function listItems(tx: DbLike, filters: ItemListFilters = {}): ItemRow[] 
     .from(items)
     .where(where)
     .orderBy(items.name)
-    .limit(filters.limit ?? 200)
+    // SQLite трактует LIMIT -1 как отсутствие лимита. Обычные каталоги по-
+    // прежнему ограничены 200 строками; полный список запрашивается явно.
+    .limit(filters.limit === null ? -1 : filters.limit ?? 200)
     .all();
 }
 

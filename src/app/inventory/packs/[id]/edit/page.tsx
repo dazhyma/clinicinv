@@ -33,7 +33,7 @@ export default async function EditPackPage({ params }: { params: Promise<{ id: s
 
   // Состав может содержать предмет, который позже деактивировали: он должен
   // остаться в списке выбора, иначе форма молча выбросила бы его из пака.
-  const { items } = listItemsForActor(db, actor, { includeInactive: true });
+  const { items } = listItemsForActor(db, actor, { includeInactive: true, limit: null });
 
   return (
     <main className="app-shell flex max-w-4xl flex-col">

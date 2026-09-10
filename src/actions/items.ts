@@ -162,7 +162,7 @@ export interface ItemListQuery {
   lowStock?: boolean;
   priceMissing?: boolean;
   includeInactive?: boolean;
-  limit?: number;
+  limit?: number | null;
 }
 
 export interface ItemListResult {

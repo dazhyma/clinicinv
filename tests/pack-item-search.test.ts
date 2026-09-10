@@ -69,4 +69,30 @@ describe('Pack searchable item selector', () => {
     expect(filterPackItems(indexed, '', new Set(), '')).toHaveLength(50);
     expect(filterPackItems(indexed, 'syringe', new Set(), '')).toHaveLength(50);
   });
+
+  it('loads the full catalog for Pack forms instead of only the first 200 items', () => {
+    const ctx = setupTestDb();
+    for (let index = 1; index <= 205; index += 1) {
+      const created = createItemAction(ctx.db, ctx.admin, {
+        name: `Catalog Item ${String(index).padStart(3, '0')}`,
+        trackingMethod: 'standard',
+        costPerUnit: '1.00',
+        unitOfMeasurement: 'each',
+        initialQuantity: '1',
+      });
+      if (!created.ok) throw new Error(created.error);
+    }
+
+    expect(listItemsForActor(ctx.db, ctx.admin).items).toHaveLength(200);
+    const fullCatalog = listItemsForActor(ctx.db, ctx.admin, { limit: null }).items;
+    expect(fullCatalog).toHaveLength(205);
+    expect(fullCatalog.at(-1)?.name).toBe('Catalog Item 205');
+
+    const newPage = readFileSync(join(process.cwd(),
+      'src/app/inventory/packs/new/page.tsx'), 'utf8');
+    const editPage = readFileSync(join(process.cwd(),
+      'src/app/inventory/packs/[id]/edit/page.tsx'), 'utf8');
+    expect(newPage).toContain('{ limit: null }');
+    expect(editPage).toContain('{ includeInactive: true, limit: null }');
+  });
 });
